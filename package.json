@@ -14,5 +14,9 @@
     "@cloudflare/workers-types": "4.20260702.1",
     "typescript": "5.8.3",
     "wrangler": "4.83.0"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "0.135.0",
+    "zod": "4.6.7"
   }
 }

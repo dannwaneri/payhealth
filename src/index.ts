@@ -1,7 +1,12 @@
+import { analyzeEvent } from "./agent";
+import { createDemoEvent } from "./demo";
+
 export interface Env {
   DB: D1Database;
   PAYPAL_API_BASE: string;
   ALLOW_UNVERIFIED_SIMULATOR: string;
+  AI_DAILY_CAP: string;
+  ANTHROPIC_API_KEY: string;
   PP_ID: string;
   PP_SECRET: string;
   PAYPAL_WEBHOOK_ID: string;
@@ -65,7 +70,7 @@ async function verifySignature(req: Request, rawBody: string, env: Env): Promise
   }
 }
 
-async function handleWebhook(req: Request, env: Env): Promise<Response> {
+async function handleWebhook(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
   const rawBody = await req.text();
   let event: {
     id?: string;
@@ -104,6 +109,9 @@ async function handleWebhook(req: Request, env: Env): Promise<Response> {
     )
     .run();
 
+  // Analyze new events after the response, so PayPal gets a fast 200.
+  if (result.meta.changes === 1) ctx.waitUntil(analyzeEvent(env, event.id));
+
   // Always 200 for stored or duplicate events, so PayPal stops retrying.
   return json({
     stored: result.meta.changes === 1,
@@ -116,16 +124,33 @@ async function handleWebhook(req: Request, env: Env): Promise<Response> {
 async function listEvents(env: Env): Promise<Response> {
   const { results } = await env.DB.prepare(
     `SELECT id, event_type, resource_id, summary, verified, verify_status, received_at,
-            risk_score, explanation
+            risk_score, risk_reason, explanation, is_demo
        FROM events ORDER BY received_at DESC LIMIT 50`
   ).all();
   return json(results);
 }
 
+async function listDrafts(env: Env): Promise<Response> {
+  const { results } = await env.DB.prepare(
+    `SELECT id, dispute_id, event_id, status, source, draft_json, rationale, model, created_at
+       FROM drafts ORDER BY id DESC LIMIT 50`
+  ).all();
+  return json(results);
+}
+
+// Demo button: store a prepared dispute and run it through the same pipeline as a webhook.
+async function runDemo(env: Env): Promise<Response> {
+  const eventId = await createDemoEvent(env);
+  const result = await analyzeEvent(env, eventId);
+  return json({ event_id: eventId, ...result });
+}
+
 export default {
-  async fetch(req: Request, env: Env): Promise<Response> {
+  async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const { pathname } = new URL(req.url);
-    if (req.method === "POST" && pathname === "/webhook") return handleWebhook(req, env);
+    if (req.method === "POST" && pathname === "/webhook") return handleWebhook(req, env, ctx);
+    if (req.method === "POST" && pathname === "/api/demo") return runDemo(env);
+    if (req.method === "GET" && pathname === "/api/drafts") return listDrafts(env);
     if (req.method === "GET" && pathname === "/api/events") return listEvents(env);
     if (req.method === "GET" && pathname === "/health") return json({ ok: true });
     return json({ error: "not_found" }, 404);

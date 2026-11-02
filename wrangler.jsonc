@@ -9,7 +9,9 @@
     "PAYPAL_API_BASE": "https://api-m.sandbox.paypal.com",
     // Simulator events fail PayPal signature checks. When "true", they are
     // stored with verified=0 instead of being rejected. Sandbox demo only.
-    "ALLOW_UNVERIFIED_SIMULATOR": "true"
+    "ALLOW_UNVERIFIED_SIMULATOR": "true",
+    // Max model calls per UTC day. Over the cap, disputes get the last saved draft.
+    "AI_DAILY_CAP": "50"
   },
   "d1_databases": [
     {
@@ -21,5 +23,5 @@
     }
   ]
   // Secrets (set with `wrangler secret put`, or .dev.vars locally):
-  // PP_ID, PP_SECRET, PAYPAL_WEBHOOK_ID
+  // PP_ID, PP_SECRET, PAYPAL_WEBHOOK_ID, ANTHROPIC_API_KEY
 }

@@ -2,3 +2,4 @@
 PP_ID=your-sandbox-client-id
 PP_SECRET=your-sandbox-client-secret
 PAYPAL_WEBHOOK_ID=webhook-id-from-the-developer-dashboard
+ANTHROPIC_API_KEY=your-anthropic-api-key
