@@ -1,0 +1,4 @@
+# Copy to .dev.vars for local dev. Never commit .dev.vars.
+PP_ID=your-sandbox-client-id
+PP_SECRET=your-sandbox-client-secret
+PAYPAL_WEBHOOK_ID=webhook-id-from-the-developer-dashboard

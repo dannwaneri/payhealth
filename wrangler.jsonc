@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "payhealth",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-04-22",
+  "observability": { "enabled": true },
+  "vars": {
+    // Sandbox only. Do not change to the live API.
+    "PAYPAL_API_BASE": "https://api-m.sandbox.paypal.com",
+    // Simulator events fail PayPal signature checks. When "true", they are
+    // stored with verified=0 instead of being rejected. Sandbox demo only.
+    "ALLOW_UNVERIFIED_SIMULATOR": "true"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "payhealth",
+      // Remote D1 database (created 2026-11-02).
+      "database_id": "c592fcb5-e91b-4d59-871e-42246c4bb6dd",
+      "migrations_dir": "migrations"
+    }
+  ]
+  // Secrets (set with `wrangler secret put`, or .dev.vars locally):
+  // PP_ID, PP_SECRET, PAYPAL_WEBHOOK_ID
+}

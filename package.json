@@ -1,0 +1,18 @@
+{
+  "name": "payhealth",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --port 8799",
+    "deploy": "wrangler deploy",
+    "db:local": "wrangler d1 migrations apply payhealth --local",
+    "db:remote": "wrangler d1 migrations apply payhealth --remote",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "4.20260702.1",
+    "typescript": "5.8.3",
+    "wrangler": "4.83.0"
+  }
+}
