@@ -1,6 +1,8 @@
 # PayHealth
 
-PayHealth watches a PayPal seller account and explains each event in plain words. When a buyer opens a dispute, it drafts the seller's reply from proof the seller has already saved. A person must approve the reply before it is sent to PayPal.
+PayHealth helps small online sellers keep their PayPal money. It starts **at the sale**, not when a dispute arrives: for every payment it shows which proof to keep (tracking, postage receipt, photos, buyer messages, terms), saves it, and can send the tracking number to PayPal. If the buyer later opens a dispute, the AI drafts the reply from that proof, and a person approves it before PayHealth sends it to PayPal.
+
+*A seller should never lose a payment because the proof was not ready.*
 
 Built for the PayPal AI Hackathon. **Sandbox only. No real money moves.**
 
@@ -9,18 +11,20 @@ Built for the PayPal AI Hackathon. **Sandbox only. No real money moves.**
 **Live demo:** https://payhealth.fpl-test.workers.dev
 **Approval password:** in the submission's testing notes on Devpost. No PayPal or AI account is needed.
 
-1. Click **Load demo case (no proof saved)**. Wait about 10 seconds. The draft is marked **Needs evidence** and **Approve is blocked**, because the seller has saved no proof.
-2. Under **Add proof**, pick "Tracking or delivery record", fill in a title, details, carrier and tracking number, type any name and the password, and click **Save proof**.
-3. Click **Make a new draft with my saved proof**. The new draft cites only your proof, the evidence is rated Strong, and Approve unlocks.
+1. Click **Load a demo sale**. A made-up paid order opens with an empty proof checklist.
+2. Save one or two items, for example a tracking number (any carrier and number) and a postage receipt. Type any name and the password. The checklist count goes up.
+3. Click **Buyer opens a dispute (demo)**. Wait about 10 seconds. The dispute page opens, and the reply is already drafted from the proof you saved, so you can approve it straight away.
 4. Click **Review and approve**, then **Approve (demo, nothing is sent)**. The audit trail shows who did what, when, and the exact payload.
-5. To get proof ready before a dispute, open the [real sandbox payment 9W907734NT218004L](https://payhealth.fpl-test.workers.dev/payment?id=9W907734NT218004L). Its checklist shows which proof is saved for that sale and lets you add more.
-6. To see a real PayPal case, open [dispute PP-R-GDA-10196082](https://payhealth.fpl-test.workers.dev/dispute?id=PP-R-GDA-10196082). It shows signed PayPal events and two submissions that PayPal accepted (HTTP 200).
+5. To see the safety rule, go back home and click **Load demo case (no proof saved)**. The draft is marked **Needs evidence** and Approve is blocked. Add proof on that page and click **Make a new draft** to unlock it.
+6. Real PayPal sandbox records: the [payment 9W907734NT218004L](https://payhealth.fpl-test.workers.dev/payment?id=9W907734NT218004L) (signed by PayPal) and its [dispute PP-R-GDA-10196082](https://payhealth.fpl-test.workers.dev/dispute?id=PP-R-GDA-10196082), where PayPal accepted the evidence twice (HTTP 200).
 
-Demo cases are made up and labeled "Demo case" everywhere. Each click creates its own order, so your test never affects another judge's.
+Demo sales and demo cases are made up and labeled everywhere. Each click creates its own order, so your test never affects another judge's.
 
 ## What it does
 
 **Before a dispute.** When a payment arrives, its page shows a proof checklist for that sale: tracking (with signature confirmation), postage receipt, photos of the item and packing, messages with the buyer, and shop terms. Proof saved here is stored against the payment. If a dispute opens later, the first draft already has it.
+
+A tracking number can also be sent to PayPal from the same form (Orders v2 `POST /v2/checkout/orders/{id}/track`). PayPal's developer docs say to send shipment tracking numbers "for faster access to funds, seller protection, and quicker resolution of payment holds" ([Integrate package tracking](https://developer.paypal.com/docs/tracking/orders-api/integrate/)). The result (sent, or PayPal's error) is shown on the proof item and in the payment's audit trail. Demo sales never send anything.
 
 This follows advice sellers give each other. In a public r/Watches thread on selling with PayPal Goods & Services ([link](https://www.reddit.com/r/Watches/comments/1xa1s5e/selling_on_reddit_is_paypal_buying_goods_risky/)), the top reply lists "item never arrived" claims among the most likely problems, and says many sellers skip documenting the sale and then have nothing to prove their case.
 
@@ -154,7 +158,7 @@ To try the AI without your own Anthropic key, use the hosted demo. `npm test` ne
 npm test
 ```
 
-35 tests run inside the Workers runtime with a local D1 database and the real migrations (via Cloudflare's Vitest integration). They need no PayPal or AI keys and make no network calls: PayPal is stubbed where a test needs it.
+42 tests run inside the Workers runtime with a local D1 database and the real migrations (via Cloudflare's Vitest integration). They need no PayPal or AI keys and make no network calls: PayPal is stubbed where a test needs it.
 
 They cover the rules the product depends on:
 
@@ -165,6 +169,7 @@ They cover the rules the product depends on:
 - Submission: nothing is sent when PayPal is not asking for evidence (the draft stays waiting); when it is, the evidence goes out as the multipart `input` part with tracking from the vault, and unknown carriers are sent as `OTHER` with `carrier_name_other`.
 - Seller actions: proof validation, proof stays inside one case, each demo click gets its own order, redraft refused after the reply was sent.
 - Proof before a dispute: the payment checklist marks saved items, and proof saved on a payment is in the vault of a later dispute for that payment.
+- Tracking to PayPal: the Orders v2 request goes to the payment's order with the right carrier fields and a request id per proof item; a refusal is recorded without losing the proof; nothing is sent when the box is unticked or for a demo sale.
 
 We checked that the tests catch real mistakes by breaking three rules on purpose (the pending-draft check, the "Needs evidence" block, the carrier mapping). Five tests failed, and all passed again after the code was restored.
 
@@ -190,8 +195,10 @@ We checked that the tests catch real mistakes by breaking three rules on purpose
 | `GET /api/drafts/:id` | One draft with the evidence it uses. |
 | `POST /api/drafts/:id/approve` | Body: `name`, `password`, optional edited `notes`. |
 | `POST /api/drafts/:id/reject` | Body: `name`, `password`, optional `reason`. |
+| `POST /api/demo-sale` | Make a demo sale (made-up paid order). |
+| `POST /api/payments/:id/demo-dispute` | Demo sales only: the buyer opens a dispute for this sale. |
 | `GET /api/payments/:id` | One payment: proof checklist, saved proof, disputes for it, audit trail. |
-| `POST /api/payments/:id/evidence` | Same body as dispute evidence. Saves proof for this payment before any dispute. |
+| `POST /api/payments/:id/evidence` | Same body as dispute evidence, plus optional `send_to_paypal: "true"` for tracking items. Saves proof for this payment before any dispute. |
 | `POST /api/disputes/:id/evidence` | Body: `name`, `password`, `kind`, `title`, `details`, optional `carrier`, `tracking_number`. Saves proof for this dispute's payment. |
 | `POST /api/disputes/:id/redraft` | Body: `name`, `password`. Writes a new draft from the saved proof; the pending one is marked "Replaced". |
 | `POST /api/demo` | Load the demo case with proof. `?case=no-proof` loads the case with no proof saved. |

@@ -113,3 +113,76 @@ export async function createDemoEvent(env: Env, kind: DemoCase = "proof"): Promi
   ]);
   return { eventId: ev.id, disputeId: ev.resource.dispute_id };
 }
+
+// ---------- demo sale: proof first, dispute later ----------
+// A made-up paid order (is_demo = 2: no shop-wide proof). The seller saves proof on the
+// payment page; "Buyer opens a dispute" then creates a dispute for this same payment.
+export async function createDemoSale(env: Env): Promise<{ eventId: string; captureId: string }> {
+  const short = crypto.randomUUID().slice(0, 8).toUpperCase();
+  const captureId = `DEMOCAP${short}`;
+  const now = new Date().toISOString();
+  const ev = {
+    id: `WH-DEMOSALE-${short}`,
+    event_version: "1.0",
+    create_time: now,
+    resource_type: "capture",
+    event_type: "PAYMENT.CAPTURE.COMPLETED",
+    summary: "Payment completed for USD 56.00 (demo sale)",
+    resource: {
+      id: captureId,
+      status: "COMPLETED",
+      amount: { currency_code: "USD", value: "56.00" },
+      create_time: now,
+      supplementary_data: { related_ids: { order_id: `DEMOORDER${short}` } },
+      note: "Handmade leather sandals, size 42, shipping to Austin, TX",
+    },
+  };
+  await env.DB.prepare(
+    `INSERT INTO events (id, event_type, resource_type, resource_id, summary, payload, verified, verify_status, is_demo)
+     VALUES (?, ?, ?, ?, ?, ?, 0, 'DEMO', 2)`
+  ).bind(ev.id, ev.event_type, ev.resource_type, captureId, ev.summary, JSON.stringify(ev)).run();
+  return { eventId: ev.id, captureId };
+}
+
+// Demo only: the buyer of a demo sale says the item did not arrive. Never for real payments.
+export async function createDemoDisputeForSale(
+  env: Env, captureId: string
+): Promise<{ eventId: string; disputeId: string; existed: boolean } | null> {
+  const sale = await env.DB.prepare(
+    `SELECT is_demo FROM events WHERE resource_id = ? AND event_type = 'PAYMENT.CAPTURE.COMPLETED' LIMIT 1`
+  ).bind(captureId).first<{ is_demo: number }>();
+  if (!sale || sale.is_demo === 0) return null;
+  const short = captureId.replace("DEMOCAP", "");
+  const disputeId = `PP-D-DEMOSALE-${short}`;
+  const existing = await env.DB.prepare(`SELECT id FROM events WHERE resource_id = ? LIMIT 1`).bind(disputeId).first<{ id: string }>();
+  if (existing) return { eventId: existing.id, disputeId, existed: true };
+
+  const now = new Date();
+  const ev = {
+    id: `WH-DEMOSALE-D-${short}`,
+    event_version: "1.0",
+    create_time: now.toISOString(),
+    resource_type: "dispute",
+    event_type: "CUSTOMER.DISPUTE.CREATED",
+    summary: `A new dispute opened with Case # ${disputeId} (demo case)`,
+    resource: {
+      dispute_id: disputeId,
+      create_time: now.toISOString(),
+      reason: "MERCHANDISE_OR_SERVICE_NOT_RECEIVED",
+      status: "OPEN",
+      dispute_amount: { currency_code: "USD", value: "56.00" },
+      dispute_life_cycle_stage: "INQUIRY",
+      dispute_channel: "INTERNAL",
+      seller_response_due_date: new Date(now.getTime() + 10 * 864e5).toISOString(),
+      disputed_transactions: [
+        { seller_transaction_id: captureId, items: [{ item_description: "Handmade leather sandals, size 42" }] },
+      ],
+      messages: [{ posted_by: "BUYER", time_posted: now.toISOString(), content: "It has been two weeks and nothing has come. Please refund me." }],
+    },
+  };
+  await env.DB.prepare(
+    `INSERT INTO events (id, event_type, resource_type, resource_id, summary, payload, verified, verify_status, is_demo)
+     VALUES (?, ?, ?, ?, ?, ?, 0, 'DEMO', 2)`
+  ).bind(ev.id, ev.event_type, ev.resource_type, disputeId, ev.summary, JSON.stringify(ev)).run();
+  return { eventId: ev.id, disputeId, existed: false };
+}

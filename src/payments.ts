@@ -3,6 +3,7 @@
 // for the same payment starts with it in the vault.
 import type { Env } from "./index";
 import { checkSeller, saveEvidence } from "./disputes";
+import { sendTracking } from "./tracking";
 
 // What sellers are advised to keep for each sale. One proof kind per line.
 const CHECKLIST = [
@@ -13,7 +14,10 @@ const CHECKLIST = [
   { kind: "policy", label: "Your terms or shop policy (returns, condition)" },
 ];
 
-type EvidenceRow = { id: number; kind: string; title: string; body: string; carrier: string | null; tracking_number: string | null };
+type EvidenceRow = {
+  id: number; kind: string; title: string; body: string; carrier: string | null; tracking_number: string | null;
+  paypal_tracking: string | null; paypal_tracking_detail: string | null;
+};
 
 async function paymentEvents(env: Env, id: string) {
   const { results } = await env.DB.prepare(
@@ -30,7 +34,7 @@ export async function getPaymentView(env: Env, id: string) {
   const marker = Math.max(...events.map((e) => e.is_demo as number));
 
   const { results: vault } = await env.DB.prepare(
-    `SELECT id, kind, title, body, carrier, tracking_number FROM evidence
+    `SELECT id, kind, title, body, carrier, tracking_number, paypal_tracking, paypal_tracking_detail FROM evidence
       WHERE transaction_id = ? AND is_demo = ? ORDER BY id`
   ).bind(id, marker).all<EvidenceRow>();
 
@@ -66,5 +70,12 @@ export async function addPaymentEvidence(env: Env, id: string, body: Record<stri
   const events = await paymentEvents(env, id);
   if (!events.length) return { status: 404, body: { error: "Payment not found." } };
   const marker = Math.max(...events.map((e) => e.is_demo as number));
-  return saveEvidence(env, who.name, id, marker, body, `payment:${id}`);
+  const saved = await saveEvidence(env, who.name, id, marker, body, `payment:${id}`);
+  // Optionally send a tracking number to PayPal right away (Orders v2 add-tracking).
+  const evidenceId = (saved.body as { evidence_id?: number }).evidence_id;
+  if (saved.status === 200 && evidenceId && body.kind === "tracking" && String(body.send_to_paypal) === "true") {
+    const tracking = await sendTracking(env, id, evidenceId, who.name);
+    return { status: 200, body: { ...(saved.body as object), tracking } };
+  }
+  return saved;
 }

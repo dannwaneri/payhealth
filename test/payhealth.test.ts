@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker, { type Env } from "../src/index";
 import { draftDecision, keepKnownIds, takeCall } from "../src/agent";
 import { addEvidence, blockReason, buildEvidence, decideDraft, getDisputeView, redraft } from "../src/disputes";
-import { createDemoEvent } from "../src/demo";
+import { createDemoDisputeForSale, createDemoEvent, createDemoSale } from "../src/demo";
+import { trackerBody } from "../src/tracking";
 import { addPaymentEvidence, getPaymentView } from "../src/payments";
 
 const env = testEnv as unknown as Env;
@@ -390,5 +391,111 @@ describe("payment proof", () => {
     await addPayment(cap);
     expect((await addPaymentEvidence(env, uid("NOPE"), { password: PASS, name: "A", kind: "other", title: "t", details: "d" })).status).toBe(404);
     expect((await addPaymentEvidence(env, cap, { password: "wrong", name: "A", kind: "other", title: "t", details: "d" })).status).toBe(401);
+  });
+});
+
+// ---------- tracking to PayPal and the demo sale ----------
+describe("send tracking to PayPal", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("builds the Orders v2 tracker body: known carriers by code, others as OTHER", () => {
+    expect(trackerBody("CAP1", "dhl", "JD01")).toEqual({ capture_id: "CAP1", tracking_number: "JD01", carrier: "DHL", notify_payer: false });
+    expect(trackerBody("CAP1", "Sample Courier", "SC1")).toEqual({
+      capture_id: "CAP1", tracking_number: "SC1", carrier: "OTHER", carrier_name_other: "Sample Courier", notify_payer: false,
+    });
+  });
+
+  async function realSale() {
+    const cap = uid("CAP").replace(/-/g, "");
+    const payload = {
+      id: uid("WH-PAY"), event_type: "PAYMENT.CAPTURE.COMPLETED",
+      resource: { id: cap, status: "COMPLETED", supplementary_data: { related_ids: { order_id: "ORDER123" } } },
+    };
+    await env.DB.prepare(
+      `INSERT INTO events (id, event_type, resource_type, resource_id, payload, verified, verify_status) VALUES (?, ?, 'capture', ?, ?, 1, 'SUCCESS')`
+    ).bind(payload.id, payload.event_type, cap, JSON.stringify(payload)).run();
+    return cap;
+  }
+  const trackingProof = (extra: Record<string, string> = {}) => ({
+    password: PASS, name: "Ada", kind: "tracking", title: "Courier record", details: "Dropped off.",
+    carrier: "UPS", tracking_number: "1Z1", send_to_paypal: "true", ...extra,
+  });
+
+  it("sends the tracking number to the right order, once per proof item, and records PayPal's answer", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url: String(url), init });
+      if (String(url).endsWith("/v1/oauth2/token")) return Response.json({ access_token: "tok" });
+      return Response.json({ id: "ORDER123" }, { status: 201 });
+    }));
+    const cap = await realSale();
+    const r = await addPaymentEvidence(env, cap, trackingProof());
+    expect((r.body as any).tracking.status).toBe("sent");
+
+    const post = calls.find((c) => c.url.endsWith("/v2/checkout/orders/ORDER123/track"))!;
+    expect(JSON.parse(post.init!.body as string)).toEqual({ capture_id: cap, tracking_number: "1Z1", carrier: "UPS", notify_payer: false });
+    const reqId = (post.init!.headers as Record<string, string>)["paypal-request-id"];
+    expect(reqId.startsWith(`payhealth-track-${cap}-`)).toBe(true);
+    expect(Number(reqId.split("-").pop())).toBeGreaterThan(0);
+
+    const view = (await getPaymentView(env, cap))!;
+    expect(view.vault[0].paypal_tracking).toBe("sent");
+    expect(view.audit.map((a) => a.action)).toEqual(["proof_added", "tracking_sent"]);
+  });
+
+  it("records a refusal from PayPal without losing the saved proof", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) =>
+      String(url).endsWith("/v1/oauth2/token") ? Response.json({ access_token: "tok" }) : new Response("UNPROCESSABLE", { status: 422 })));
+    const cap = await realSale();
+    const r = await addPaymentEvidence(env, cap, trackingProof());
+    expect((r.body as any).tracking.status).toBe("failed");
+    const view = (await getPaymentView(env, cap))!;
+    expect(view.vault).toHaveLength(1);
+    expect(view.vault[0].paypal_tracking).toBe("failed");
+  });
+
+  it("does not send when the box is not ticked", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const cap = await realSale();
+    const r = await addPaymentEvidence(env, cap, trackingProof({ send_to_paypal: "false" }));
+    expect((r.body as any).tracking).toBeUndefined();
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("demo sale", () => {
+  it("never sends a demo sale's tracking to PayPal", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    const { captureId } = await createDemoSale(env);
+    const r = await addPaymentEvidence(env, captureId, {
+      password: PASS, name: "Ada", kind: "tracking", title: "Courier record", details: "Delivered.",
+      carrier: "Sample Courier", tracking_number: "SC9", send_to_paypal: "true",
+    });
+    expect((r.body as any).tracking.status).toBe("skipped_demo");
+    expect(fetchSpy).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it("opens a demo dispute for the sale, and the dispute starts with the sale's proof", async () => {
+    const { captureId } = await createDemoSale(env);
+    await addPaymentEvidence(env, captureId, {
+      password: PASS, name: "Ada", kind: "receipt", title: "Drop-off receipt", details: "Posted at the counter.",
+    });
+    const created = (await createDemoDisputeForSale(env, captureId))!;
+    const again = (await createDemoDisputeForSale(env, captureId))!;
+    expect(again.disputeId).toBe(created.disputeId);
+    const view = (await getDisputeView(env, created.disputeId))!;
+    expect(view.is_demo).toBe(true);
+    expect(view.vault.map((v) => v.title)).toEqual(["Drop-off receipt"]);
+  });
+
+  it("refuses a demo dispute for a real payment", async () => {
+    const cap = uid("CAP");
+    await env.DB.prepare(
+      `INSERT INTO events (id, event_type, resource_type, resource_id, payload, verified, verify_status) VALUES (?, 'PAYMENT.CAPTURE.COMPLETED', 'capture', ?, '{}', 1, 'SUCCESS')`
+    ).bind(uid("WH"), cap).run();
+    expect(await createDemoDisputeForSale(env, cap)).toBeNull();
   });
 });

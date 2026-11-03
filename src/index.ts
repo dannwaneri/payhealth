@@ -1,5 +1,5 @@
 import { analyzeEvent } from "./agent";
-import { createDemoEvent } from "./demo";
+import { createDemoDisputeForSale, createDemoEvent, createDemoSale } from "./demo";
 import { addEvidence, decideDraft, getDisputeView, getDraft, passwordOk, redraft } from "./disputes";
 import { getAccessToken } from "./paypal";
 import { addPaymentEvidence, getPaymentView } from "./payments";
@@ -171,6 +171,21 @@ export default {
     if (req.method === "GET" && m) {
       const view = await getDisputeView(env, m[1]);
       return view ? json(view) : json({ error: "not_found" }, 404);
+    }
+    // Demo sale: a made-up paid order, so judges can save proof before any dispute.
+    if (req.method === "POST" && pathname === "/api/demo-sale") {
+      const { eventId, captureId } = await createDemoSale(env);
+      const result = await analyzeEvent(env, eventId);
+      return json({ capture_id: captureId, ...result });
+    }
+    m = pathname.match(/^\/api\/payments\/([A-Za-z0-9-]+)\/demo-dispute$/);
+    if (req.method === "POST" && m) {
+      const created = await createDemoDisputeForSale(env, m[1]);
+      if (!created) return json({ error: "Only demo sales can get a demo dispute." }, 400);
+      // A second click opens the same dispute without another AI call.
+      if (created.existed) return json({ dispute_id: created.disputeId, status: "exists" });
+      const result = await analyzeEvent(env, created.eventId);
+      return json({ dispute_id: created.disputeId, ...result });
     }
     m = pathname.match(/^\/api\/payments\/([A-Za-z0-9-]+)$/);
     if (req.method === "GET" && m) {

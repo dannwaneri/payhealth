@@ -97,6 +97,9 @@ const AUDIT_ACTIONS = {
   not_sent_demo: "Not sent (demo case)",
   not_sent_not_ready: "Not sent: PayPal is not asking for evidence yet",
   proof_added: "Proof added",
+  tracking_sent: "Tracking sent to PayPal",
+  tracking_send_failed: "Sending tracking to PayPal failed",
+  tracking_not_sent_demo: "Tracking not sent (demo sale)",
   redraft_requested: "New draft requested",
 };
 
@@ -151,6 +154,20 @@ function showError(where, err) {
 // ---------- page: event feed ----------
 async function initFeed() {
   const detail = $("#detail");
+  const saleBtn = $("#demo-sale");
+  const saleMsg = $("#sale-msg");
+  saleBtn.addEventListener("click", async () => {
+    saleBtn.disabled = true;
+    saleMsg.textContent = "Creating a demo sale. This takes a few seconds.";
+    try {
+      const r = await api("/api/demo-sale", { method: "POST" });
+      location.href = `/payment?id=${encodeURIComponent(r.capture_id)}`;
+    } catch (err) {
+      saleMsg.textContent = `Could not create the demo sale: ${err.message}`;
+      saleBtn.disabled = false;
+    }
+  });
+
   const demoBtns = [$("#demo"), $("#demo-noproof")];
   const demoMsg = $("#demo-msg");
 
@@ -452,6 +469,7 @@ function renderAudit(a) {
   if (a.action === "proof_added" && d.title) li.append(el("div", { class: "small", text: `${PROOF_KINDS[d.kind] || d.kind}: ${d.title}` }));
   if (a.action === "rejected" && d.reason) li.append(el("div", { class: "small", text: `Reason: ${d.reason}` }));
   if (d.paypal?.message) li.append(el("div", { class: "small", text: d.paypal.message }));
+  if (a.action.startsWith("tracking_") && d.message) li.append(el("div", { class: "small", text: d.message }));
   if (d.payload) {
     li.append(el("details", {},
       el("summary", { text: a.action === "not_sent_demo" ? "What would have been sent" : "What was sent" }),
@@ -550,6 +568,7 @@ async function initPayment() {
   const doneCount = v.checklist.filter((c) => c.done).length;
 
   const summary = el("div", { class: "card" },
+    v.is_demo ? el("div", { class: "notice", text: "Demo sale. Not from PayPal. The order is made up, and nothing is sent to PayPal." }) : null,
     el("div", { class: "row" }, sourceBadge(ev),
       el("span", { class: `badge ${doneCount >= 3 ? "risk-low" : doneCount ? "risk-medium" : "risk-high"}`,
         text: `Proof ready: ${doneCount} of ${v.checklist.length}` })),
@@ -563,6 +582,28 @@ async function initPayment() {
     el("h3", { text: "Why save proof now" }),
     el("p", { text: "If the buyer later says the item did not arrive, PayPal asks you for proof by a deadline. Proof you save now is ready the moment a dispute opens, and PayHealth's first draft can use it." }));
 
+  // Demo sales only: let a judge play the buyer and open a dispute for this sale.
+  let demoDispute = null;
+  if (v.is_demo && !v.disputes.length) {
+    const btn = el("button", { type: "button", text: "Buyer opens a dispute (demo)" });
+    const out = el("p", { class: "muted small", "aria-live": "polite" });
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      out.textContent = "The buyer says the item did not arrive. The AI is reading the case with your saved proof. About 10 seconds.";
+      try {
+        const r = await api(`/api/payments/${encodeURIComponent(v.payment_id)}/demo-dispute`, { method: "POST" });
+        location.href = `/dispute?id=${encodeURIComponent(r.dispute_id)}`;
+      } catch (err) {
+        out.textContent = `Could not open the demo dispute: ${err.message}`;
+        btn.disabled = false;
+      }
+    });
+    demoDispute = el("div", { class: "card" },
+      el("h2", { text: "Then: the buyer opens a dispute" }),
+      el("p", { class: "muted", text: "Save some proof first, then play the buyer. PayHealth drafts the reply from the proof you saved for this sale." }),
+      el("div", { class: "actions" }, btn), out);
+  }
+
   const disputes = v.disputes.length
     ? el("div", { class: "card" }, el("h2", { text: "Disputes for this payment" }),
         el("ul", { class: "plain" }, ...v.disputes.map((d) =>
@@ -575,7 +616,11 @@ async function initPayment() {
       el("li", {}, el("span", { class: `badge ${c.done ? "risk-low" : "tag"}`, text: c.done ? "Saved" : "Not yet" }), " ", c.label))),
     v.vault.length ? el("h3", { text: "Saved proof" }) : null,
     v.vault.length ? el("ul", { class: "plain" }, ...v.vault.map((e) =>
-      el("li", {}, el("strong", { text: e.title }), ` (${PROOF_KINDS[e.kind] || e.kind}): ${e.body}`))) : null);
+      el("li", {}, el("strong", { text: e.title }), ` (${PROOF_KINDS[e.kind] || e.kind}): ${e.body}`,
+        e.paypal_tracking ? el("div", {}, el("span", {
+          class: `badge ${e.paypal_tracking === "sent" ? "risk-low" : e.paypal_tracking === "failed" ? "risk-high" : "tag"}`,
+          text: e.paypal_tracking === "sent" ? "Sent to PayPal" : e.paypal_tracking === "failed" ? "Not saved by PayPal" : "Demo: not sent",
+        }), " ", el("span", { class: "muted small", text: e.paypal_tracking_detail || "" })) : null))) : null);
 
   // Add proof form (the server applies the same checks as on the dispute page).
   const kind = el("select", { id: "p-kind" }, ...Object.entries(PROOF_KINDS).map(([k, label]) => el("option", { value: k, text: label })));
@@ -586,9 +631,12 @@ async function initPayment() {
   details.style.minHeight = "120px";
   const carrier = el("input", { type: "text", id: "p-carrier", maxlength: "60" });
   const tracking = el("input", { type: "text", id: "p-tracking", maxlength: "64" });
+  const toPayPal = el("input", { type: "checkbox", id: "p-topaypal", checked: true });
   const trackingFields = el("div", {},
     el("label", { for: "p-carrier", text: "Carrier" }), carrier,
-    el("label", { for: "p-tracking", text: "Tracking number" }), tracking);
+    el("label", { for: "p-tracking", text: "Tracking number" }), tracking,
+    el("label", { for: "p-topaypal", style: "font-weight:400" }, toPayPal,
+      v.is_demo ? " Also send it to PayPal (demo sale: nothing is sent)" : " Also send it to PayPal. PayPal says tracking numbers help with seller protection and payment holds."));
   const syncKind = () => (trackingFields.hidden = kind.value !== "tracking");
   kind.addEventListener("change", syncKind);
   syncKind();
@@ -602,12 +650,14 @@ async function initPayment() {
     save.disabled = true;
     msg.replaceChildren(el("div", { class: "notice", text: "Saving..." }));
     try {
-      await api(`/api/payments/${encodeURIComponent(v.payment_id)}/evidence`, {
+      const saved = await api(`/api/payments/${encodeURIComponent(v.payment_id)}/evidence`, {
         method: "POST",
         body: JSON.stringify({ kind: kind.value, title: title.value, details: details.value, carrier: carrier.value,
-          tracking_number: tracking.value, name: name.value, password: pass.value }),
+          tracking_number: tracking.value, send_to_paypal: String(toPayPal.checked), name: name.value, password: pass.value }),
       });
-      try { sessionStorage.setItem("ph-msg", "Proof saved. If a dispute opens for this payment, the first draft will use it."); } catch {}
+      const t = saved.tracking;
+      const note = t ? ` ${t.message}` : "";
+      try { sessionStorage.setItem("ph-msg", `Proof saved. If a dispute opens for this payment, the first draft will use it.${note}`); } catch {}
       location.reload();
     } catch (err) {
       showError(msg, err);
@@ -633,7 +683,7 @@ async function initPayment() {
   const trail = el("div", { class: "card" }, el("h2", { text: "Audit trail" }),
     v.audit.length ? el("ol", { class: "trail" }, ...v.audit.map(renderAudit)) : el("p", { class: "muted", text: "Nothing yet." }));
 
-  root.replaceChildren(summary, disputes || "", checklist, form, trail);
+  root.replaceChildren(summary, disputes || "", checklist, form, demoDispute || "", trail);
 }
 
 // ---------- start ----------

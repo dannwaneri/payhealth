@@ -12,13 +12,23 @@
     <header class="top">
       <div>
         <h1>PayHealth</h1>
-        <p>Your PayPal events, explained in plain words. Disputes get a reply drafted for you to check.</p>
+        <p>Get your proof ready at every sale, so a PayPal dispute never finds you without it.</p>
       </div>
       <a href="/about" class="small">How this works</a>
     </header>
 
     <section class="card">
-      <h2>Try it with a sample dispute</h2>
+      <h2>Start here: a sale comes in</h2>
+      <p>PayHealth starts at the sale, not when a dispute arrives. It tells you which proof to keep while you still have it, and can send your tracking number to PayPal.</p>
+      <p class="muted">This makes a made-up paid order. Save some proof for it, then play the buyer and open a dispute. The reply is drafted from the proof you saved. Nothing is sent to PayPal.</p>
+      <div class="actions">
+        <button id="demo-sale">Load a demo sale</button>
+      </div>
+      <p id="sale-msg" class="muted small" aria-live="polite"></p>
+    </section>
+
+    <section class="card">
+      <h2>Or jump straight to a dispute</h2>
       <p class="muted">Both cases are made up and labeled "Demo case". Nothing is sent to PayPal.</p>
       <ul class="plain muted">
         <li><strong>With proof:</strong> a buyer says a fabric order did not arrive. The seller saved tracking, a receipt and an email.</li>
