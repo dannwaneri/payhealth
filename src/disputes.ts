@@ -1,6 +1,7 @@
 // Dispute view, approval, and submission to the PayPal Disputes API.
 import type { Env } from "./index";
 import { getAccessToken } from "./paypal";
+import { analyzeEvent, disputeTransactionIds, loadVault } from "./agent";
 
 // Carriers PayPal accepts by code (subset of the enum in the Disputes API schema).
 // Anything else is sent as OTHER with carrier_name_other.
@@ -132,9 +133,16 @@ export async function getDisputeView(env: Env, disputeId: string) {
     .bind(disputeId)
     .all<Record<string, any>>();
 
+  const marker = Math.max(...events.map((e) => e.is_demo as number));
+  const vault = await loadVault(env, disputeTransactionIds(latest), marker);
+  const lastStatus = drafts[0]?.status;
+
   return {
     dispute_id: disputeId,
-    is_demo: events.some((e) => e.is_demo > 0),
+    is_demo: marker > 0,
+    vault,
+    // A new draft makes sense until a reply for this stage has been approved or sent.
+    can_redraft: !lastStatus || ["pending", "rejected", "replaced", "failed"].includes(lastStatus),
     reason: latest.reason ?? null,
     status: latest.status ?? null,
     amount: latest.dispute_amount ?? null,
@@ -270,4 +278,71 @@ async function submitToPayPal(env: Env, disputeId: string, payload: unknown): Pr
     dispute_status: dispute.status,
     message: res.ok ? "PayPal accepted the evidence." : `PayPal refused the evidence: ${text.slice(0, 300)}`,
   };
+}
+
+// ---------- seller actions: add proof, ask for a new draft ----------
+
+const KINDS = new Set(["tracking", "receipt", "communication", "policy", "other"]);
+
+type Who = { status: number; body: unknown } | { name: string };
+async function checkSeller(env: Env, body: Record<string, string>): Promise<Who> {
+  if (!env.DEMO_PASSWORD) return { status: 503, body: { error: "Seller actions are not set up on this server." } };
+  if (!(await passwordOk(env, body.password ?? ""))) return { status: 401, body: { error: "Wrong password." } };
+  const name = (body.name ?? "").trim().slice(0, 80);
+  if (!name) return { status: 400, body: { error: "Please type your name. It goes in the audit trail." } };
+  return { name };
+}
+
+async function latestDisputeEvent(env: Env, disputeId: string) {
+  return env.DB.prepare(
+    `SELECT id, payload, is_demo FROM events WHERE resource_id = ? AND event_type LIKE 'CUSTOMER.DISPUTE.%'
+      ORDER BY received_at DESC, rowid DESC LIMIT 1`
+  ).bind(disputeId).first<{ id: string; payload: string; is_demo: number }>();
+}
+
+export async function addEvidence(env: Env, disputeId: string, body: Record<string, string>) {
+  const who = await checkSeller(env, body);
+  if (!("name" in who)) return who;
+  const ev = await latestDisputeEvent(env, disputeId);
+  if (!ev) return { status: 404, body: { error: "Dispute not found." } };
+  const txn = disputeTransactionIds(JSON.parse(ev.payload).resource ?? {})[0];
+  if (!txn) return { status: 409, body: { error: "PayPal did not say which payment this dispute is about." } };
+
+  const kind = (body.kind ?? "").trim();
+  const title = (body.title ?? "").trim();
+  const details = (body.details ?? "").trim();
+  const carrier = (body.carrier ?? "").trim() || null;
+  const tracking = (body.tracking_number ?? "").trim() || null;
+  if (!KINDS.has(kind)) return { status: 400, body: { error: "Pick what kind of proof this is." } };
+  if (!title || title.length > 120) return { status: 400, body: { error: "Give the proof a short title (up to 120 characters)." } };
+  if (!details || details.length > 1000) return { status: 400, body: { error: "Describe the proof in up to 1000 characters." } };
+  if (kind === "tracking" && !tracking) return { status: 400, body: { error: "Tracking proof needs a tracking number." } };
+  if ((carrier?.length ?? 0) > 60 || (tracking?.length ?? 0) > 64) return { status: 400, body: { error: "Carrier or tracking number is too long." } };
+
+  // Stored against this dispute's payment only, so it never leaks into another case.
+  const row = await env.DB.prepare(
+    `INSERT INTO evidence (kind, title, body, carrier, tracking_number, transaction_id, is_demo)
+     VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`
+  ).bind(kind, title, details, kind === "tracking" ? carrier : null, kind === "tracking" ? tracking : null, txn, ev.is_demo)
+    .first<{ id: number }>();
+  await audit(env, disputeId, null, "proof_added", who.name, { evidence_id: row?.id, kind, title });
+  return { status: 200, body: { saved: true, evidence_id: row?.id } };
+}
+
+export async function redraft(env: Env, disputeId: string, body: Record<string, string>) {
+  const who = await checkSeller(env, body);
+  if (!("name" in who)) return who;
+  const last = await env.DB.prepare(`SELECT status FROM drafts WHERE dispute_id = ? ORDER BY id DESC LIMIT 1`)
+    .bind(disputeId).first<{ status: string }>();
+  if (last && !["pending", "rejected", "replaced", "failed"].includes(last.status))
+    return { status: 409, body: { error: "Your reply for this stage was already approved or sent. PayHealth drafts again when PayPal asks for more." } };
+  const ev = await latestDisputeEvent(env, disputeId);
+  if (!ev) return { status: 404, body: { error: "Dispute not found." } };
+
+  await audit(env, disputeId, null, "redraft_requested", who.name);
+  const result = await analyzeEvent(env, ev.id, { forceDraft: true });
+  if (result.status === "cap_reached")
+    return { status: 429, body: { error: "The daily AI limit is reached. Try again after 00:00 UTC." } };
+  if (result.status === "error") return { status: 502, body: { error: `The AI could not write a draft (${result.error}).` } };
+  return { status: 200, body: result };
 }

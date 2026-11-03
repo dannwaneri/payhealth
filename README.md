@@ -42,6 +42,10 @@ Open the hosted URL listed in the submission. The approval password is in the su
 3. Click **Review and approve**. Edit the reply if you want, type your name and the password, and click **Approve (demo, nothing is sent)**.
 4. Go back to the dispute. The audit trail shows your approval and the exact payload that would go to PayPal.
 5. Go back to the home page and click **Load demo case (no proof saved)**. The seller saved nothing for this order, so the draft is marked **Needs evidence**, the evidence is rated Weak, and Approve is disabled. The server also refuses it.
+6. On the same page, open **Add proof**. Pick "Tracking or delivery record", give it a title, details, carrier and tracking number, type your name and the password, and click **Save proof**.
+7. Click **Make a new draft with my saved proof**. The old draft is marked "Replaced", the new one cites your proof, and Approve unlocks. The audit trail shows "Proof added" and "New draft requested" with your name.
+
+Each demo click gets its own order, so proof you add to one demo case never appears in another.
 
 ### Send a test event from PayPal
 
@@ -136,6 +140,8 @@ Open `https://<your-worker>.workers.dev/api/selfcheck`. All four values should b
 | `GET /api/drafts/:id` | One draft with the evidence it uses. |
 | `POST /api/drafts/:id/approve` | Body: `name`, `password`, optional edited `notes`. |
 | `POST /api/drafts/:id/reject` | Body: `name`, `password`, optional `reason`. |
+| `POST /api/disputes/:id/evidence` | Body: `name`, `password`, `kind`, `title`, `details`, optional `carrier`, `tracking_number`. Saves proof for this dispute's payment. |
+| `POST /api/disputes/:id/redraft` | Body: `name`, `password`. Writes a new draft from the saved proof; the pending one is marked "Replaced". |
 | `POST /api/demo` | Load the demo case with proof. `?case=no-proof` loads the case with no proof saved. |
 | `POST /api/events/:id/recheck` | Body: `password`. Run the AI on an event again (counts toward the daily cap). |
 | `GET /api/selfcheck` | Configuration check (booleans only). |
@@ -150,8 +156,8 @@ Open `https://<your-worker>.workers.dev/api/selfcheck`. All four values should b
 - **Simulator events cannot be verified.** PayPal's Webhooks Simulator page says simulator events cannot be verified. PayHealth stores them with `verified = 0` and labels them "simulated".
 - **Simulated disputes do not exist in PayPal.** They cannot receive evidence. The full path (see "Tested end to end") needs a real sandbox dispute on a completed payment.
 - **PayPal accepts evidence only at some stages.** The Worker submits only when PayPal's dispute details include a `provide_evidence` link. Otherwise it sends nothing, keeps the draft waiting, and writes PayPal's status to the audit trail. In our test the link was present as soon as the buyer opened the case.
-- **One draft per dispute stage.** When an inquiry becomes a claim and PayPal asks for evidence again, PayHealth writes a new draft for the claim. Other dispute events update the explanation and risk only. There is no "redraft after adding proof" button yet.
-- **No file uploads yet.** Evidence is sent as tracking info and notes. Documents (receipts, photos) are not attached.
+- **One draft per dispute stage.** When an inquiry becomes a claim and PayPal asks for evidence again, PayHealth writes a new draft for the claim. Other dispute events update the explanation and risk only. The seller can also ask for a new draft after adding proof, until the reply for that stage is approved.
+- **Proof is text.** The seller describes each item (title, details, carrier and tracking number). Files such as photos or PDFs are not uploaded or sent to PayPal.
 - **One shared approval password.** This is a demo control, not user accounts.
 
 ## License

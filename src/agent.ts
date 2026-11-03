@@ -100,12 +100,12 @@ async function takeCall(env: Env): Promise<boolean> {
   return row !== null;
 }
 
-function disputeTransactionIds(resource: any): string[] {
+export function disputeTransactionIds(resource: any): string[] {
   const txns: any[] = resource?.disputed_transactions ?? [];
   return txns.map((t) => t.seller_transaction_id).filter((id): id is string => !!id);
 }
 
-async function loadVault(env: Env, txnIds: string[], isDemo: number): Promise<EvidenceRow[]> {
+export async function loadVault(env: Env, txnIds: string[], isDemo: number): Promise<EvidenceRow[]> {
   // Items for the disputed transactions, plus general items (policies) with no transaction.
   const placeholders = txnIds.map(() => "?").join(",");
   const txnClause = txnIds.length ? `transaction_id IN (${placeholders}) OR ` : "";
@@ -140,7 +140,9 @@ async function useSavedDraft(env: Env, disputeId: string, eventId: string): Prom
   return res?.id ?? null;
 }
 
-export async function analyzeEvent(env: Env, eventId: string): Promise<AnalyzeResult> {
+// forceDraft: the seller asked for a new draft (for example after adding proof). Any pending draft
+// for the dispute is marked "replaced" once the new one is written.
+export async function analyzeEvent(env: Env, eventId: string, opts: { forceDraft?: boolean } = {}): Promise<AnalyzeResult> {
   const ev = await env.DB.prepare(
     `SELECT id, event_type, summary, payload, verified, is_demo FROM events WHERE id = ?`
   )
@@ -169,13 +171,14 @@ export async function analyzeEvent(env: Env, eventId: string): Promise<AnalyzeRe
           LIMIT 1`
       ).bind(disputeId, stage).first())
     : true;
-  const needsDraft =
+  const needsDraft = opts.forceDraft ? isDispute && !!disputeId :
     (ev.event_type === "CUSTOMER.DISPUTE.CREATED" && !hasDraft) ||
     (ev.event_type === "CUSTOMER.DISPUTE.UPDATED" && resource.status === "WAITING_FOR_SELLER_RESPONSE" && !blocked);
 
   if (!env.ANTHROPIC_API_KEY) return record(env, ev.id, "no_api_key");
   if (!(await takeCall(env))) {
-    const savedId = needsDraft && disputeId ? await useSavedDraft(env, disputeId, ev.id) : null;
+    // A saved draft can carry another case's facts, so a seller-requested redraft never uses one.
+    const savedId = needsDraft && disputeId && !opts.forceDraft ? await useSavedDraft(env, disputeId, ev.id) : null;
     await env.DB.prepare(
       `UPDATE events SET explanation = ?, risk_reason = 'cap_reached' WHERE id = ?`
     )
@@ -190,7 +193,8 @@ export async function analyzeEvent(env: Env, eventId: string): Promise<AnalyzeRe
     `Event type: ${ev.event_type}`,
     `PayPal summary: ${ev.summary ?? "(none)"}`,
     `Dispute draft needed: ${needsDraft ? "yes" : "no"}`,
-    ...(isDispute && hasDraft ? ["A reply draft already exists for this dispute. If the vault holds proof, the next step is to review and approve it."] : []),
+    ...(opts.forceDraft ? ["The seller updated the evidence vault and asked for a new reply draft."] : []),
+    ...(isDispute && hasDraft && !opts.forceDraft ? ["A reply draft already exists for this dispute. If the vault holds proof, the next step is to review and approve it."] : []),
     "",
     "<event_resource>",
     JSON.stringify(resource, null, 2),
@@ -233,6 +237,11 @@ export async function analyzeEvent(env: Env, eventId: string): Promise<AnalyzeRe
     const known = new Set(vault.map((v) => v.id));
     draft.evidence_ids = draft.evidence_ids.filter((id) => known.has(id));
     if (!draft.evidence_ids.length) draft.evidence_strength = "weak";
+    if (opts.forceDraft) {
+      await env.DB.prepare(`UPDATE drafts SET status = 'replaced' WHERE dispute_id = ? AND status = 'pending'`)
+        .bind(disputeId)
+        .run();
+    }
     const row = await env.DB.prepare(
       `INSERT INTO drafts (dispute_id, event_id, draft_json, rationale, model, source)
        VALUES (?, ?, ?, ?, ?, 'model') RETURNING id`

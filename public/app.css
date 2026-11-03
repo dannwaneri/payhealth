@@ -60,7 +60,7 @@ button:disabled, .button[aria-disabled="true"] { opacity: 0.45; cursor: not-allo
 button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px solid #f0b429; outline-offset: 2px; }
 
 label { display: block; font-weight: 600; margin: 16px 0 6px; }
-input[type=text], input[type=password], textarea {
+input[type=text], input[type=password], textarea, select {
   width: 100%; font: inherit; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text);
 }
 textarea { min-height: 220px; resize: vertical; }

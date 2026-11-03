@@ -1,6 +1,6 @@
 import { analyzeEvent } from "./agent";
 import { createDemoEvent } from "./demo";
-import { decideDraft, getDisputeView, getDraft, passwordOk } from "./disputes";
+import { addEvidence, decideDraft, getDisputeView, getDraft, passwordOk, redraft } from "./disputes";
 import { getAccessToken } from "./paypal";
 
 export interface Env {
@@ -170,6 +170,12 @@ export default {
     if (req.method === "GET" && m) {
       const view = await getDisputeView(env, m[1]);
       return view ? json(view) : json({ error: "not_found" }, 404);
+    }
+    m = pathname.match(/^\/api\/disputes\/([A-Za-z0-9-]+)\/(evidence|redraft)$/);
+    if (req.method === "POST" && m) {
+      const body = (await req.json().catch(() => ({}))) as Record<string, string>;
+      const r = m[2] === "evidence" ? await addEvidence(env, m[1], body) : await redraft(env, m[1], body);
+      return json(r.body, r.status);
     }
     m = pathname.match(/^\/api\/drafts\/(\d+)$/);
     if (req.method === "GET" && m) {

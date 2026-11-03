@@ -86,6 +86,7 @@ const DRAFT_STATUS = {
   submitted: "Sent to PayPal",
   failed: "Not sent. See the audit trail.",
   rejected: "Rejected",
+  replaced: "Replaced by a newer draft",
 };
 const AUDIT_ACTIONS = {
   drafted: "Draft written",
@@ -95,6 +96,8 @@ const AUDIT_ACTIONS = {
   send_failed: "Sending to PayPal failed",
   not_sent_demo: "Not sent (demo case)",
   not_sent_not_ready: "Not sent: PayPal is not asking for evidence yet",
+  proof_added: "Proof added",
+  redraft_requested: "New draft requested",
 };
 
 // Risk score = the AI's estimate of the chance the seller loses money on this event (0-100).
@@ -291,7 +294,98 @@ async function initDispute() {
     el("h2", { text: "Audit trail" }),
     v.audit.length ? el("ol", { class: "trail" }, ...v.audit.map(renderAudit)) : el("p", { class: "muted", text: "Nothing yet." }));
 
-  root.replaceChildren(summary, draftCard, olderCard || "", trail);
+  root.replaceChildren(summary, draftCard, renderProof(v), olderCard || "", trail);
+}
+
+const PROOF_KINDS = {
+  tracking: "Tracking or delivery record",
+  receipt: "Receipt or invoice",
+  communication: "Message to or from the buyer",
+  policy: "Shop policy",
+  other: "Other proof",
+};
+
+// Saved proof for this order, the "Add proof" form, and "Make a new draft".
+function renderProof(v) {
+  const card = el("div", { class: "card" }, el("h2", { text: "Proof saved for this order" }));
+  card.append(v.vault.length
+    ? el("ul", { class: "plain" }, ...v.vault.map((e) =>
+        el("li", {}, el("strong", { text: `${e.title}` }), ` (${PROOF_KINDS[e.kind] || e.kind}): ${e.body}`)))
+    : el("p", { class: "muted", text: "No proof saved yet." }));
+
+  const kind = el("select", { id: "p-kind" },
+    ...Object.entries(PROOF_KINDS).map(([k, label]) => el("option", { value: k, text: label })));
+  const title = el("input", { type: "text", id: "p-title", maxlength: "120", placeholder: "For example: Courier delivery record" });
+  const details = el("textarea", { id: "p-details", maxlength: "1000", placeholder: "What does this proof show? Dates, names, amounts." });
+  details.style.minHeight = "120px";
+  const carrier = el("input", { type: "text", id: "p-carrier", maxlength: "60", placeholder: "For example: DHL, UPS, or your courier's name" });
+  const tracking = el("input", { type: "text", id: "p-tracking", maxlength: "64" });
+  const trackingFields = el("div", {},
+    el("label", { for: "p-carrier", text: "Carrier" }), carrier,
+    el("label", { for: "p-tracking", text: "Tracking number" }), tracking);
+  const syncKind = () => (trackingFields.hidden = kind.value !== "tracking");
+  kind.addEventListener("change", syncKind);
+  syncKind();
+
+  const name = el("input", { type: "text", id: "p-name", autocomplete: "name" });
+  const pass = el("input", { type: "password", id: "p-pass", autocomplete: "current-password" });
+  const msg = el("div", { "aria-live": "polite" });
+  const saveBtn = el("button", { type: "button", text: "Save proof" });
+  const redraftBtn = el("button", { type: "button", class: "secondary", text: "Make a new draft with my saved proof" });
+  if (!v.can_redraft) redraftBtn.disabled = true;
+
+  const send = async (path, body, btn, busy) => {
+    saveBtn.disabled = redraftBtn.disabled = true;
+    msg.replaceChildren(el("div", { class: "notice", text: busy }));
+    try {
+      await api(path, { method: "POST", body: JSON.stringify({ ...body, name: name.value, password: pass.value }) });
+      return true;
+    } catch (err) {
+      showError(msg, err);
+      saveBtn.disabled = false;
+      redraftBtn.disabled = !v.can_redraft;
+      return false;
+    }
+  };
+  const base = `/api/disputes/${encodeURIComponent(v.dispute_id)}`;
+  saveBtn.addEventListener("click", async () => {
+    const ok = await send(`${base}/evidence`, {
+      kind: kind.value, title: title.value, details: details.value, carrier: carrier.value, tracking_number: tracking.value,
+    }, saveBtn, "Saving...");
+    if (ok) {
+      sessionStorage.setItem("ph-msg", "Proof saved. Click \"Make a new draft\" so the reply uses it.");
+      location.reload();
+    }
+  });
+  redraftBtn.addEventListener("click", async () => {
+    const ok = await send(`${base}/redraft`, {}, redraftBtn, "Writing a new draft. This takes about 10 seconds.");
+    if (ok) {
+      sessionStorage.setItem("ph-msg", "New draft ready. The old one is marked \"Replaced\".");
+      location.reload();
+    }
+  });
+
+  let flash = null;
+  try { flash = sessionStorage.getItem("ph-msg"); sessionStorage.removeItem("ph-msg"); } catch {}
+  if (flash) card.prepend(el("div", { class: "notice", text: flash }));
+
+  card.append(
+    el("details", { open: !v.vault.length ? true : null },
+      el("summary", { text: "Add proof" }),
+      el("label", { for: "p-kind", text: "What kind of proof is it?" }), kind,
+      el("label", { for: "p-title", text: "Title" }), title,
+      el("label", { for: "p-details", text: "Details" }), details,
+      trackingFields,
+      el("p", { class: "muted small", text: "The AI may only use what you write here. Write facts you can show." })));
+  card.append(
+    el("label", { for: "p-name", text: "Your name (for the audit trail)" }), name,
+    el("label", { for: "p-pass", text: "Approval password" }), pass,
+    el("div", { class: "actions" }, saveBtn, redraftBtn),
+    msg);
+  if (!v.can_redraft) {
+    msg.before(el("p", { class: "muted small", text: "Your reply for this stage was already sent. PayHealth drafts again when PayPal asks for more." }));
+  }
+  return card;
 }
 
 function renderDraft(d, withAction) {
@@ -332,6 +426,7 @@ function renderAudit(a) {
     el("span", { class: "muted small", text: `${when(a.at)} · by ${a.actor}` }));
   const d = a.detail || {};
   if (a.action === "approved" && d.notes_edited) li.append(el("div", { class: "small", text: "The reply was edited before approval." }));
+  if (a.action === "proof_added" && d.title) li.append(el("div", { class: "small", text: `${PROOF_KINDS[d.kind] || d.kind}: ${d.title}` }));
   if (a.action === "rejected" && d.reason) li.append(el("div", { class: "small", text: `Reason: ${d.reason}` }));
   if (d.paypal?.message) li.append(el("div", { class: "small", text: d.paypal.message }));
   if (d.payload) {
