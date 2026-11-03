@@ -131,6 +131,25 @@ Open `https://<your-worker>.workers.dev/api/selfcheck`. All four values should b
 
 **Local development:** copy `.dev.vars.example` to `.dev.vars`, fill it in, then run `npm run db:local` and `npm run dev`. The dashboard is at http://localhost:8799.
 
+## Tests
+
+```bash
+npm test
+```
+
+32 tests run inside the Workers runtime with a local D1 database and the real migrations (via Cloudflare's Vitest integration). They need no PayPal or AI keys and make no network calls: PayPal is stubbed where a test needs it.
+
+They cover the rules the product depends on:
+
+- Webhook: rejects non-JSON and non-PayPal bodies, stores unsigned simulator events as unverified, ignores duplicates, refuses unsigned events when the simulator switch is off.
+- Plain-code guards: drafts that cite no proof are blocked and rated Weak; evidence ids the vault does not hold are dropped; saved drafts cannot be approved; a draft cannot be approved twice.
+- One draft per dispute stage: a new draft when PayPal asks again at a new stage, never twice for the same stage, never while one is pending.
+- Daily AI cap stops at the limit.
+- Submission: nothing is sent when PayPal is not asking for evidence (the draft stays waiting); when it is, the evidence goes out as the multipart `input` part with tracking from the vault, and unknown carriers are sent as `OTHER` with `carrier_name_other`.
+- Seller actions: proof validation, proof stays inside one case, each demo click gets its own order, redraft refused after the reply was sent.
+
+We checked that the tests catch real mistakes by breaking three rules on purpose (the pending-draft check, the "Needs evidence" block, the carrier mapping). Five tests failed, and all passed again after the code was restored.
+
 ## Settings
 
 | Name | Where | Purpose |

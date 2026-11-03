@@ -87,7 +87,7 @@ export type AnalyzeResult =
 const today = () => new Date().toISOString().slice(0, 10);
 
 // Atomically take one call from today's budget. Returns false when the cap is reached.
-async function takeCall(env: Env): Promise<boolean> {
+export async function takeCall(env: Env): Promise<boolean> {
   const cap = Number(env.AI_DAILY_CAP);
   if (!(cap > 0)) return false;
   const row = await env.DB.prepare(
@@ -142,6 +142,39 @@ async function useSavedDraft(env: Env, disputeId: string, eventId: string): Prom
 
 // forceDraft: the seller asked for a new draft (for example after adding proof). Any pending draft
 // for the dispute is marked "replaced" once the new one is written.
+// One draft per dispute stage. Draft when the dispute is new, or when PayPal is waiting for the
+// seller at a stage that has no draft yet. Never while another draft is pending.
+export async function draftDecision(
+  env: Env, eventType: string, resource: any
+): Promise<{ needsDraft: boolean; hasDraft: boolean }> {
+  const disputeId: string | null = resource.dispute_id ?? null;
+  if (!disputeId) return { needsDraft: false, hasDraft: false };
+  const stage: string = resource.dispute_life_cycle_stage ?? "UNKNOWN";
+  const hasDraft = !!(await env.DB.prepare(`SELECT 1 FROM drafts WHERE dispute_id = ? LIMIT 1`).bind(disputeId).first());
+  const blocked = !!(await env.DB.prepare(
+    `SELECT 1 FROM drafts d LEFT JOIN events e ON e.id = d.event_id
+      WHERE d.dispute_id = ?
+        AND (d.status = 'pending'
+             OR COALESCE(json_extract(d.draft_json, '$.stage'),
+                         json_extract(e.payload, '$.resource.dispute_life_cycle_stage')) = ?)
+      LIMIT 1`
+  ).bind(disputeId, stage).first());
+  const needsDraft =
+    (eventType === "CUSTOMER.DISPUTE.CREATED" && !hasDraft) ||
+    (eventType === "CUSTOMER.DISPUTE.UPDATED" && resource.status === "WAITING_FOR_SELLER_RESPONSE" && !blocked);
+  return { needsDraft, hasDraft };
+}
+
+// Keep only vault ids that exist. The model must not cite evidence we do not hold.
+// A draft that cites nothing is always rated weak.
+export function keepKnownIds<T extends { evidence_ids: number[]; evidence_strength: string }>(
+  draft: T, vault: { id: number }[]
+): Pick<T, "evidence_ids" | "evidence_strength"> {
+  const known = new Set(vault.map((v) => v.id));
+  const evidence_ids = draft.evidence_ids.filter((id) => known.has(id));
+  return { evidence_ids, evidence_strength: evidence_ids.length ? draft.evidence_strength : "weak" };
+}
+
 export async function analyzeEvent(env: Env, eventId: string, opts: { forceDraft?: boolean } = {}): Promise<AnalyzeResult> {
   const ev = await env.DB.prepare(
     `SELECT id, event_type, summary, payload, verified, is_demo FROM events WHERE id = ?`
@@ -154,26 +187,10 @@ export async function analyzeEvent(env: Env, eventId: string, opts: { forceDraft
   const resource = payload.resource ?? {};
   const disputeId: string | null = resource.dispute_id ?? null;
   const isDispute = ev.event_type.startsWith("CUSTOMER.DISPUTE.");
-  // One draft per dispute stage. PayPal can ask for evidence again when an inquiry becomes a
-  // claim. Draft when: the dispute is new, or PayPal is waiting for the seller at a stage that
-  // has no draft yet. Never while another draft is pending (retries and re-checks add nothing).
+  // PayPal can ask for evidence again when an inquiry becomes a claim (see draftDecision).
   const stage: string = resource.dispute_life_cycle_stage ?? "UNKNOWN";
-  const hasDraft = disputeId
-    ? !!(await env.DB.prepare(`SELECT 1 FROM drafts WHERE dispute_id = ? LIMIT 1`).bind(disputeId).first())
-    : false;
-  const blocked = disputeId
-    ? !!(await env.DB.prepare(
-        `SELECT 1 FROM drafts d LEFT JOIN events e ON e.id = d.event_id
-          WHERE d.dispute_id = ?
-            AND (d.status = 'pending'
-                 OR COALESCE(json_extract(d.draft_json, '$.stage'),
-                             json_extract(e.payload, '$.resource.dispute_life_cycle_stage')) = ?)
-          LIMIT 1`
-      ).bind(disputeId, stage).first())
-    : true;
-  const needsDraft = opts.forceDraft ? isDispute && !!disputeId :
-    (ev.event_type === "CUSTOMER.DISPUTE.CREATED" && !hasDraft) ||
-    (ev.event_type === "CUSTOMER.DISPUTE.UPDATED" && resource.status === "WAITING_FOR_SELLER_RESPONSE" && !blocked);
+  const { needsDraft: ruleSaysDraft, hasDraft } = await draftDecision(env, ev.event_type, resource);
+  const needsDraft = opts.forceDraft ? isDispute && !!disputeId : ruleSaysDraft;
 
   if (!env.ANTHROPIC_API_KEY) return record(env, ev.id, "no_api_key");
   if (!(await takeCall(env))) {
@@ -234,9 +251,7 @@ export async function analyzeEvent(env: Env, eventId: string, opts: { forceDraft
   if (needsDraft && disputeId && parsed.dispute_draft) {
     const { rationale, ...draft } = parsed.dispute_draft;
     // Keep only vault ids that exist. The model must not cite evidence we do not hold.
-    const known = new Set(vault.map((v) => v.id));
-    draft.evidence_ids = draft.evidence_ids.filter((id) => known.has(id));
-    if (!draft.evidence_ids.length) draft.evidence_strength = "weak";
+    Object.assign(draft, keepKnownIds(draft, vault));
     if (opts.forceDraft) {
       await env.DB.prepare(`UPDATE drafts SET status = 'replaced' WHERE dispute_id = ? AND status = 'pending'`)
         .bind(disputeId)

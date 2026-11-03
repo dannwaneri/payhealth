@@ -8,11 +8,16 @@
     "deploy": "wrangler deploy",
     "db:local": "wrangler d1 migrations apply payhealth --local",
     "db:remote": "wrangler d1 migrations apply payhealth --remote",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "0.23.0",
     "@cloudflare/workers-types": "4.20260702.1",
+    "@vitest/runner": "4.1.12",
+    "@vitest/snapshot": "4.1.12",
     "typescript": "5.8.3",
+    "vitest": "4.1.12",
     "wrangler": "4.83.0"
   },
   "dependencies": {

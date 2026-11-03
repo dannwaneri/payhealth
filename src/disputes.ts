@@ -68,7 +68,7 @@ async function vaultItems(env: Env, ids: number[]): Promise<EvidenceRow[]> {
 }
 
 // Why a draft cannot be approved, in plain words. null means it can be approved.
-function blockReason(row: DraftRow, draft: Draft): string | null {
+export function blockReason(row: Pick<DraftRow, "status" | "source">, draft: Pick<Draft, "evidence_ids">): string | null {
   if (row.status !== "pending") return "This draft is already decided.";
   if (row.source === "saved")
     return "This is a saved draft from an earlier case, shown for reference only. A new draft is made when the daily AI limit resets.";
@@ -166,7 +166,7 @@ export async function passwordOk(env: Env, given: string): Promise<boolean> {
 }
 
 // Build the PayPal "evidences" payload. Tracking comes from the vault, not from model text.
-function buildEvidence(draft: Draft, items: EvidenceRow[], notes: string) {
+export function buildEvidence(draft: Pick<Draft, "evidence_type">, items: Pick<EvidenceRow, "carrier" | "tracking_number">[], notes: string) {
   const tracking = items
     .filter((i) => i.tracking_number)
     .map((i) => {
