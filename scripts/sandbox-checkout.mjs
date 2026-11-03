@@ -19,8 +19,22 @@ if (!id || !secret) {
   process.exit(1);
 }
 
+// Retries network errors (for example a DNS failure) up to 3 times. Order and capture calls
+// carry a PayPal-Request-Id, so a retry cannot create a second order or a second charge.
+async function fetchWithRetry(url, options) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fetch(url, options);
+    } catch (err) {
+      if (attempt >= 3) throw err;
+      console.log(`Network error (${err.cause?.code || err.message}). Trying again in 3 seconds...`);
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+  }
+}
+
 async function api(path, options = {}) {
-  const res = await fetch(BASE + path, options);
+  const res = await fetchWithRetry(BASE + path, options);
   const text = await res.text();
   let body;
   try { body = JSON.parse(text); } catch { body = text; }
