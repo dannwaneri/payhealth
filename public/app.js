@@ -237,6 +237,15 @@ async function initFeed() {
 }
 
 // ---------- page: dispute view ----------
+// Plain reason when the AI step failed, from the error stored on the event.
+function aiMissing(ev) {
+  const r = ev.risk_reason || "";
+  if (r === "error:no_api_key") return "The AI is not set up on this server (no Anthropic API key), so there is no explanation or draft. Add ANTHROPIC_API_KEY to .dev.vars, or use the hosted demo.";
+  if (r === "cap_reached") return null;
+  if (r.startsWith("error:")) return `The AI could not read this event (${r.slice(6)}). Try again later.`;
+  return null;
+}
+
 async function initDispute() {
   const root = $("#dispute");
   const id = params.get("id");
@@ -269,7 +278,7 @@ async function initDispute() {
       el("dt", { text: "PayPal status" }), el("dd", { text: PAYPAL_STATUS[v.status] || v.status || "Unknown" }),
       el("dt", { text: "Case number" }), el("dd", { text: v.dispute_id })),
     el("h3", { text: "What happened" }),
-    el("p", { text: ev.explanation || "Not explained yet." }),
+    el("p", { text: ev.explanation || aiMissing(ev) || "Not explained yet." }),
     sent || ev.next_step ? el("h3", { text: "What to do next" }) : null,
     sent
       ? el("p", { text: `Nothing for now. Your reply was sent to PayPal on ${when(draft.submitted_at)}. PayHealth will show PayPal's next step here.` })

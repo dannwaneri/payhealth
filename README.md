@@ -138,6 +138,16 @@ Open `https://<your-worker>.workers.dev/api/selfcheck`. All four values should b
 
 **Local development:** copy `.dev.vars.example` to `.dev.vars`, fill it in, then run `npm run db:local` and `npm run dev`. The dashboard is at http://localhost:8799.
 
+**What each key is for when you run it locally:**
+
+| Key in `.dev.vars` | Needed for | Without it |
+|---|---|---|
+| `DEMO_PASSWORD` | Approve, reject, add proof, new draft | Those actions say "not set up on this server". |
+| `ANTHROPIC_API_KEY` | The AI: explanations, risk, evidence strength, reply drafts | Demo cases load, but there is no explanation and no draft. The dispute page says the AI is not set up. |
+| `PP_ID`, `PP_SECRET`, `PAYPAL_WEBHOOK_ID` | Real PayPal webhooks and sending evidence to PayPal | Demo cases still work (they never call PayPal). |
+
+To try the AI without your own Anthropic key, use the hosted demo. `npm test` needs none of these keys.
+
 ## Tests
 
 ```bash
