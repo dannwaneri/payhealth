@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>How PayHealth works</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <main class="wrap narrow">
+    <a class="back" href="/">&larr; All events</a>
+    <div class="card">
+      <h1 style="font-size:1.4rem;margin-top:0">How PayHealth works</h1>
+      <ol>
+        <li>PayPal sends PayHealth a message each time something happens on your account: a payment, a refund, a dispute.</li>
+        <li>PayHealth asks PayPal to confirm the message is real, then saves it.</li>
+        <li>An AI explains the event in plain words and rates the risk: low, medium or high.</li>
+        <li>When a buyer opens a dispute, the AI drafts your reply. It uses only the proof you saved: tracking, receipts, emails, policies.</li>
+        <li>If you have no proof saved, the draft is marked "Needs evidence" and cannot be sent.</li>
+        <li>You read the draft, edit it if you want, and approve it. Only then is it sent to PayPal.</li>
+        <li>Every step is written to an audit trail: who approved, when, and exactly what was sent.</li>
+      </ol>
+      <h2>Labels you will see</h2>
+      <ul class="plain">
+        <li><strong>Verified by PayPal</strong>: PayPal confirmed the message is real.</li>
+        <li><strong>Simulated</strong>: a test message from PayPal's simulator. PayPal cannot confirm these.</li>
+        <li><strong>Demo case</strong>: made-up sample data for trying PayHealth.</li>
+        <li><strong>Saved draft</strong>: the AI's daily limit was reached, so an earlier draft is shown for reference. It cannot be sent.</li>
+      </ul>
+      <p class="muted small">This server uses the PayPal sandbox only. No real money moves.</p>
+    </div>
+  </main>
+</body>
+</html>

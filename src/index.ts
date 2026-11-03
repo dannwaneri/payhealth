@@ -1,5 +1,7 @@
 import { analyzeEvent } from "./agent";
 import { createDemoEvent } from "./demo";
+import { decideDraft, getDisputeView, getDraft } from "./disputes";
+import { getAccessToken } from "./paypal";
 
 export interface Env {
   DB: D1Database;
@@ -10,6 +12,7 @@ export interface Env {
   PP_ID: string;
   PP_SECRET: string;
   PAYPAL_WEBHOOK_ID: string;
+  DEMO_PASSWORD: string;
 }
 
 type VerifyResult = { verified: boolean; status: string };
@@ -19,20 +22,6 @@ const json = (data: unknown, status = 200) =>
     status,
     headers: { "content-type": "application/json" },
   });
-
-async function getAccessToken(env: Env): Promise<string> {
-  const res = await fetch(`${env.PAYPAL_API_BASE}/v1/oauth2/token`, {
-    method: "POST",
-    headers: {
-      authorization: "Basic " + btoa(`${env.PP_ID}:${env.PP_SECRET}`),
-      "content-type": "application/x-www-form-urlencoded",
-    },
-    body: "grant_type=client_credentials",
-  });
-  if (!res.ok) throw new Error(`token ${res.status}`);
-  const data = (await res.json()) as { access_token: string };
-  return data.access_token;
-}
 
 // Ask PayPal to verify the signature. The raw body is spliced in as-is:
 // re-serializing the parsed event can change it and break verification.
@@ -124,8 +113,9 @@ async function handleWebhook(req: Request, env: Env, ctx: ExecutionContext): Pro
 async function listEvents(env: Env): Promise<Response> {
   const { results } = await env.DB.prepare(
     `SELECT id, event_type, resource_id, summary, verified, verify_status, received_at,
-            risk_score, risk_reason, explanation, is_demo
-       FROM events ORDER BY received_at DESC LIMIT 50`
+            risk_score, risk_reason, explanation, is_demo,
+            (SELECT status FROM drafts d WHERE d.event_id = events.id ORDER BY d.id DESC LIMIT 1) AS draft_status
+       FROM events ORDER BY received_at DESC LIMIT 200`
   ).all();
   return json(results);
 }
@@ -163,9 +153,9 @@ async function selfCheck(req: Request, env: Env): Promise<Response> {
 
 // Demo button: store a prepared dispute and run it through the same pipeline as a webhook.
 async function runDemo(env: Env): Promise<Response> {
-  const eventId = await createDemoEvent(env);
+  const { eventId, disputeId } = await createDemoEvent(env);
   const result = await analyzeEvent(env, eventId);
-  return json({ event_id: eventId, ...result });
+  return json({ event_id: eventId, dispute_id: disputeId, ...result });
 }
 
 export default {
@@ -175,6 +165,22 @@ export default {
     if (req.method === "POST" && pathname === "/api/demo") return runDemo(env);
     if (req.method === "GET" && pathname === "/api/drafts") return listDrafts(env);
     if (req.method === "GET" && pathname === "/api/selfcheck") return selfCheck(req, env);
+    let m = pathname.match(/^\/api\/disputes\/([A-Za-z0-9-]+)$/);
+    if (req.method === "GET" && m) {
+      const view = await getDisputeView(env, m[1]);
+      return view ? json(view) : json({ error: "not_found" }, 404);
+    }
+    m = pathname.match(/^\/api\/drafts\/(\d+)$/);
+    if (req.method === "GET" && m) {
+      const draft = await getDraft(env, Number(m[1]));
+      return draft ? json(draft) : json({ error: "not_found" }, 404);
+    }
+    m = pathname.match(/^\/api\/drafts\/(\d+)\/(approve|reject)$/);
+    if (req.method === "POST" && m) {
+      const body = (await req.json().catch(() => ({}))) as Record<string, string>;
+      const r = await decideDraft(env, Number(m[1]), m[2] as "approve" | "reject", body);
+      return json(r.body, r.status);
+    }
     if (req.method === "GET" && pathname === "/api/events") return listEvents(env);
     if (req.method === "GET" && pathname === "/health") return json({ ok: true });
     return json({ error: "not_found" }, 404);

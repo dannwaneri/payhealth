@@ -9,7 +9,7 @@ const DEMO_EVIDENCE = [
     kind: "tracking",
     title: "Shipment to buyer",
     body: "Shipped 2026-10-08 from Lagos to Austin, TX. Courier status: Delivered 2026-10-21, signed by M. Ortiz.",
-    carrier: "OTHER",
+    carrier: "Sample Courier",
     tracking_number: "SC123456789NG",
     transaction_id: DEMO_TXN,
   },
@@ -86,8 +86,8 @@ function demoEvent() {
   };
 }
 
-// Stores a fresh demo dispute event and returns its id. The caller runs the normal pipeline.
-export async function createDemoEvent(env: Env): Promise<string> {
+// Stores a fresh demo dispute event. The caller runs the normal pipeline.
+export async function createDemoEvent(env: Env): Promise<{ eventId: string; disputeId: string }> {
   await seedDemoVault(env);
   const ev = demoEvent();
   await env.DB.prepare(
@@ -96,5 +96,5 @@ export async function createDemoEvent(env: Env): Promise<string> {
   )
     .bind(ev.id, ev.event_type, ev.resource_type, ev.resource.dispute_id, ev.summary, JSON.stringify(ev))
     .run();
-  return ev.id;
+  return { eventId: ev.id, disputeId: ev.resource.dispute_id };
 }

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PayHealth</title>
+  <link rel="stylesheet" href="/app.css">
+  <script src="https://cdn.jsdelivr.net/npm/ag-grid-community@36.2.0/dist/ag-grid-community.min.js"></script>
+</head>
+<body data-page="feed">
+  <main class="wrap">
+    <header class="top">
+      <div>
+        <h1>PayHealth</h1>
+        <p>Your PayPal events, explained in plain words. Disputes get a reply drafted for you to check.</p>
+      </div>
+      <a href="/about" class="small">How this works</a>
+    </header>
+
+    <section class="card">
+      <h2>Try it with a sample dispute</h2>
+      <p class="muted">This loads a made-up case: a buyer says a fabric order did not arrive. The AI reads it and drafts a reply from the seller's saved proof. Nothing is sent to PayPal.</p>
+      <div class="actions">
+        <button id="demo">Load demo case</button>
+      </div>
+      <p id="demo-msg" class="muted small" aria-live="polite"></p>
+    </section>
+
+    <section class="card">
+      <h2>Recent events</h2>
+      <p class="muted small">Click a dispute to see the drafted reply. Click any other event to read what it means.</p>
+      <div id="grid"></div>
+      <div id="detail"></div>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>
