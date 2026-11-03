@@ -152,12 +152,26 @@ export async function analyzeEvent(env: Env, eventId: string): Promise<AnalyzeRe
   const resource = payload.resource ?? {};
   const disputeId: string | null = resource.dispute_id ?? null;
   const isDispute = ev.event_type.startsWith("CUSTOMER.DISPUTE.");
-  // One draft per dispute: only the CREATED event drafts, and only if none exists yet
-  // (PayPal can deliver an event twice; a re-check must not add a second draft).
+  // One draft per dispute stage. PayPal can ask for evidence again when an inquiry becomes a
+  // claim. Draft when: the dispute is new, or PayPal is waiting for the seller at a stage that
+  // has no draft yet. Never while another draft is pending (retries and re-checks add nothing).
+  const stage: string = resource.dispute_life_cycle_stage ?? "UNKNOWN";
   const hasDraft = disputeId
     ? !!(await env.DB.prepare(`SELECT 1 FROM drafts WHERE dispute_id = ? LIMIT 1`).bind(disputeId).first())
     : false;
-  const needsDraft = ev.event_type === "CUSTOMER.DISPUTE.CREATED" && !hasDraft;
+  const blocked = disputeId
+    ? !!(await env.DB.prepare(
+        `SELECT 1 FROM drafts d LEFT JOIN events e ON e.id = d.event_id
+          WHERE d.dispute_id = ?
+            AND (d.status = 'pending'
+                 OR COALESCE(json_extract(d.draft_json, '$.stage'),
+                             json_extract(e.payload, '$.resource.dispute_life_cycle_stage')) = ?)
+          LIMIT 1`
+      ).bind(disputeId, stage).first())
+    : true;
+  const needsDraft =
+    (ev.event_type === "CUSTOMER.DISPUTE.CREATED" && !hasDraft) ||
+    (ev.event_type === "CUSTOMER.DISPUTE.UPDATED" && resource.status === "WAITING_FOR_SELLER_RESPONSE" && !blocked);
 
   if (!env.ANTHROPIC_API_KEY) return record(env, ev.id, "no_api_key");
   if (!(await takeCall(env))) {
@@ -223,7 +237,7 @@ export async function analyzeEvent(env: Env, eventId: string): Promise<AnalyzeRe
       `INSERT INTO drafts (dispute_id, event_id, draft_json, rationale, model, source)
        VALUES (?, ?, ?, ?, ?, 'model') RETURNING id`
     )
-      .bind(disputeId, ev.id, JSON.stringify(draft), rationale, MODEL)
+      .bind(disputeId, ev.id, JSON.stringify({ ...draft, stage }), rationale, MODEL)
       .first<{ id: number }>();
     draftId = row?.id ?? null;
     if (draftId) await audit(env, disputeId, draftId, "drafted", "PayHealth agent", { source: "model", model: MODEL });

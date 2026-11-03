@@ -150,7 +150,7 @@ Open `https://<your-worker>.workers.dev/api/selfcheck`. All four values should b
 - **Simulator events cannot be verified.** PayPal's Webhooks Simulator page says simulator events cannot be verified. PayHealth stores them with `verified = 0` and labels them "simulated".
 - **Simulated disputes do not exist in PayPal.** They cannot receive evidence. The full path (see "Tested end to end") needs a real sandbox dispute on a completed payment.
 - **PayPal accepts evidence only at some stages.** The Worker submits only when PayPal's dispute details include a `provide_evidence` link. Otherwise it sends nothing, keeps the draft waiting, and writes PayPal's status to the audit trail. In our test the link was present as soon as the buyer opened the case.
-- **One draft per dispute.** A later dispute event updates the explanation and risk but does not write a new draft. There is no "redraft after adding proof" button yet.
+- **One draft per dispute stage.** When an inquiry becomes a claim and PayPal asks for evidence again, PayHealth writes a new draft for the claim. Other dispute events update the explanation and risk only. There is no "redraft after adding proof" button yet.
 - **No file uploads yet.** Evidence is sent as tracking info and notes. Documents (receipts, photos) are not attached.
 - **One shared approval password.** This is a demo control, not user accounts.
 

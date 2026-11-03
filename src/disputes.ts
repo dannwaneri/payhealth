@@ -17,6 +17,7 @@ type Draft = {
   notes: string;
   missing: string[];
   evidence_strength?: "strong" | "medium" | "weak";
+  stage?: string;
   strength_reason?: string;
 };
 
@@ -88,6 +89,7 @@ function draftView(row: DraftRow, items: EvidenceRow[]) {
     submitted_at: row.submitted_at,
     rationale: row.rationale,
     evidence_type: draft.evidence_type,
+    stage: draft.stage ?? null,
     notes: draft.notes,
     missing: draft.missing,
     evidence_strength: draft.evidence_ids.length ? draft.evidence_strength ?? null : "weak",

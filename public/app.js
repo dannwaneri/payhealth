@@ -68,6 +68,10 @@ const EVIDENCE_TYPES = {
   PROOF_OF_REFUND: "Proof you refunded the buyer",
   OTHER: "Other information",
 };
+const STAGES = {
+  INQUIRY: "Stage: buyer's first complaint",
+  CHARGEBACK: "Stage: claim, PayPal decides",
+};
 const DRAFT_STATUS = {
   pending: "Waiting for you",
   approved: "Approved",
@@ -278,7 +282,8 @@ async function initDispute() {
 
 function renderDraft(d, withAction) {
   const box = el("div", {},
-    el("div", { class: "row" }, draftKindBadge(d), el("span", { class: "badge tag", text: DRAFT_STATUS[d.status] || d.status })),
+    el("div", { class: "row" }, draftKindBadge(d), el("span", { class: "badge tag", text: DRAFT_STATUS[d.status] || d.status }),
+      d.stage ? el("span", { class: "badge tag", text: STAGES[d.stage] || d.stage }) : null),
     el("h2", { style: "margin-top:12px", text: "Your reply to PayPal" }),
     el("p", { class: "muted", text: EVIDENCE_TYPES[d.evidence_type] || d.evidence_type }),
     el("div", { class: "reply", text: d.notes }));
