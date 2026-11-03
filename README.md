@@ -15,6 +15,20 @@ Built for the PayPal AI Hackathon. **Sandbox only. No real money moves.**
 7. The Worker checks the dispute with the PayPal Disputes API and submits the evidence.
 8. Every step is written to an audit trail: who approved, when, and exactly what was sent.
 
+## Tested end to end (our own sandbox run, 3 Nov 2026)
+
+| Step | Result |
+|---|---|
+| Buyer pays a sandbox order | Capture `9W907734NT218004L`, USD 24.00, COMPLETED |
+| PayPal webhooks for the payment | `CHECKOUT.ORDER.APPROVED`, `PAYMENT.CAPTURE.COMPLETED`: signature check SUCCESS |
+| Buyer opens an "item not received" case | Dispute `PP-R-GDA-10196082` |
+| PayPal webhooks for the dispute | `CUSTOMER.DISPUTE.CREATED`, `CUSTOMER.DISPUTE.UPDATED`: signature check SUCCESS |
+| AI draft | Evidence: Strong. Cites only the three vault items (marked "sandbox test"). |
+| Human approval | Name and time recorded in the audit trail |
+| Submit to PayPal | `POST /v1/customer/disputes/{id}/provide-evidence` returned HTTP 200 |
+
+The vault items for this test are sample data we created for the sandbox. They are labeled "(sandbox test)" in the app.
+
 ## How to test
 
 ### Hosted demo (fastest)
@@ -122,7 +136,8 @@ Open `https://<your-worker>.workers.dev/api/selfcheck`. All four values should b
 | `GET /api/drafts/:id` | One draft with the evidence it uses. |
 | `POST /api/drafts/:id/approve` | Body: `name`, `password`, optional edited `notes`. |
 | `POST /api/drafts/:id/reject` | Body: `name`, `password`, optional `reason`. |
-| `POST /api/demo` | Load the demo case. |
+| `POST /api/demo` | Load the demo case with proof. `?case=no-proof` loads the case with no proof saved. |
+| `POST /api/events/:id/recheck` | Body: `password`. Run the AI on an event again (counts toward the daily cap). |
 | `GET /api/selfcheck` | Configuration check (booleans only). |
 
 ## AI tools used
@@ -133,8 +148,9 @@ Open `https://<your-worker>.workers.dev/api/selfcheck`. All four values should b
 ## Known limits
 
 - **Simulator events cannot be verified.** PayPal's Webhooks Simulator page says simulator events cannot be verified. PayHealth stores them with `verified = 0` and labels them "simulated".
-- **Simulated disputes do not exist in PayPal.** Approving one records the decision, then the PayPal lookup fails and the audit trail says why. A full submission needs a real sandbox dispute on a completed payment.
-- **PayPal accepts evidence only at some stages.** The Worker submits only when PayPal's dispute details include a provide-evidence link. Otherwise it records the dispute status and sends nothing.
+- **Simulated disputes do not exist in PayPal.** They cannot receive evidence. The full path (see "Tested end to end") needs a real sandbox dispute on a completed payment.
+- **PayPal accepts evidence only at some stages.** The Worker submits only when PayPal's dispute details include a `provide_evidence` link. Otherwise it sends nothing, keeps the draft waiting, and writes PayPal's status to the audit trail. In our test the link was present as soon as the buyer opened the case.
+- **One draft per dispute.** A later dispute event updates the explanation and risk but does not write a new draft. There is no "redraft after adding proof" button yet.
 - **No file uploads yet.** Evidence is sent as tracking info and notes. Documents (receipts, photos) are not attached.
 - **One shared approval password.** This is a demo control, not user accounts.
 
