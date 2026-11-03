@@ -136,7 +136,7 @@ async function useSavedDraft(env: Env, disputeId: string, eventId: string): Prom
   )
     .bind(disputeId, eventId, last.draft_json, last.rationale)
     .first<{ id: number }>();
-  if (res) await audit(env, disputeId, res.id, "drafted", "PayHealth agent", { source: "saved", reason: "daily AI limit reached" });
+  if (res) await audit(env, disputeId, res.id, "drafted", "PayHealth AI", { source: "saved", reason: "daily AI limit reached" });
   return res?.id ?? null;
 }
 
@@ -264,7 +264,7 @@ export async function analyzeEvent(env: Env, eventId: string, opts: { forceDraft
       .bind(disputeId, ev.id, JSON.stringify({ ...draft, stage }), rationale, MODEL)
       .first<{ id: number }>();
     draftId = row?.id ?? null;
-    if (draftId) await audit(env, disputeId, draftId, "drafted", "PayHealth agent", { source: "model", model: MODEL });
+    if (draftId) await audit(env, disputeId, draftId, "drafted", "PayHealth AI", { source: "model", model: MODEL });
   }
   return { status: "analyzed", risk_score: risk, draft_id: draftId };
 }
