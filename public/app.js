@@ -68,6 +68,14 @@ const EVIDENCE_TYPES = {
   PROOF_OF_REFUND: "Proof you refunded the buyer",
   OTHER: "Other information",
 };
+const PAYPAL_STATUS = {
+  OPEN: "Open",
+  WAITING_FOR_SELLER_RESPONSE: "Waiting for your reply",
+  WAITING_FOR_BUYER_RESPONSE: "Waiting for the buyer",
+  UNDER_REVIEW: "PayPal is reviewing the case",
+  RESOLVED: "Closed",
+  OTHER: "Other",
+};
 const STAGES = {
   INQUIRY: "Stage: buyer's first complaint",
   CHARGEBACK: "Stage: claim, PayPal decides",
@@ -232,6 +240,8 @@ async function initDispute() {
   const ev = v.events[v.events.length - 1];
   const draft = v.drafts[0];
 
+  // After a reply is sent, nothing is due from the seller until PayPal asks again.
+  const sent = draft && draft.status === "submitted";
   const left = daysLeft(v.respond_by);
   const replyBy = v.respond_by
     ? el("dd", {}, day(v.respond_by), " · ",
@@ -239,17 +249,21 @@ async function initDispute() {
     : el("dd", { text: "Check the case in PayPal" });
 
   const summary = el("div", { class: "card" },
-    el("div", { class: "row" }, sourceBadge(ev), urgencyBadge(v.respond_by), strengthBadge(draft?.evidence_strength)),
+    el("div", { class: "row" }, sourceBadge(ev),
+      sent ? el("span", { class: "badge risk-low", text: "Reply sent to PayPal" }) : urgencyBadge(v.respond_by),
+      strengthBadge(draft?.evidence_strength)),
     el("h2", { style: "margin-top:12px", text: REASONS[v.reason] || "Buyer opened a dispute" }),
     el("dl", { class: "facts" },
       el("dt", { text: "Amount" }), el("dd", { text: money(v.amount) || "Not given" }),
       el("dt", { text: "Reply by" }), replyBy,
-      el("dt", { text: "PayPal status" }), el("dd", { text: v.status || "Unknown" }),
+      el("dt", { text: "PayPal status" }), el("dd", { text: PAYPAL_STATUS[v.status] || v.status || "Unknown" }),
       el("dt", { text: "Case number" }), el("dd", { text: v.dispute_id })),
     el("h3", { text: "What happened" }),
     el("p", { text: ev.explanation || "Not explained yet." }),
-    ev.next_step ? el("h3", { text: "What to do next" }) : null,
-    ev.next_step ? el("p", { text: ev.next_step }) : null,
+    sent || ev.next_step ? el("h3", { text: "What to do next" }) : null,
+    sent
+      ? el("p", { text: `Nothing for now. Your reply was sent to PayPal on ${when(draft.submitted_at)}. PayHealth will show PayPal's next step here.` })
+      : ev.next_step ? el("p", { text: ev.next_step }) : null,
     v.buyer_messages.length ? el("h3", { text: "What the buyer wrote" }) : null,
     ...v.buyer_messages.map((m) => el("p", { class: "quote", text: m }))
   );
