@@ -4,6 +4,19 @@ PayHealth watches a PayPal seller account and explains each event in plain words
 
 Built for the PayPal AI Hackathon. **Sandbox only. No real money moves.**
 
+## Try it in 2 minutes (for judges)
+
+**Live demo:** https://payhealth.fpl-test.workers.dev
+**Approval password:** in the submission's testing notes on Devpost. No PayPal or AI account is needed.
+
+1. Click **Load demo case (no proof saved)**. Wait about 10 seconds. The draft is marked **Needs evidence** and **Approve is blocked**, because the seller has saved no proof.
+2. Under **Add proof**, pick "Tracking or delivery record", fill in a title, details, carrier and tracking number, type any name and the password, and click **Save proof**.
+3. Click **Make a new draft with my saved proof**. The new draft cites only your proof, the evidence is rated Strong, and Approve unlocks.
+4. Click **Review and approve**, then **Approve (demo, nothing is sent)**. The audit trail shows who did what, when, and the exact payload.
+5. To see a real PayPal case, open dispute **PP-R-GDA-10196082** from the event list. It shows signed PayPal events and two submissions that PayPal accepted (HTTP 200).
+
+Demo cases are made up and labeled "Demo case" everywhere. Each click creates its own order, so your test never affects another judge's.
+
 ## What it does
 
 1. PayPal sends a webhook to the Worker for each account event.
