@@ -13,7 +13,7 @@ Built for the PayPal AI Hackathon. **Sandbox only. No real money moves.**
 2. Under **Add proof**, pick "Tracking or delivery record", fill in a title, details, carrier and tracking number, type any name and the password, and click **Save proof**.
 3. Click **Make a new draft with my saved proof**. The new draft cites only your proof, the evidence is rated Strong, and Approve unlocks.
 4. Click **Review and approve**, then **Approve (demo, nothing is sent)**. The audit trail shows who did what, when, and the exact payload.
-5. To see a real PayPal case, open dispute **PP-R-GDA-10196082** from the event list. It shows signed PayPal events and two submissions that PayPal accepted (HTTP 200).
+5. To see a real PayPal case, open [dispute PP-R-GDA-10196082](https://payhealth.fpl-test.workers.dev/dispute?id=PP-R-GDA-10196082). It shows signed PayPal events and two submissions that PayPal accepted (HTTP 200).
 
 Demo cases are made up and labeled "Demo case" everywhere. Each click creates its own order, so your test never affects another judge's.
 
