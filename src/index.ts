@@ -2,6 +2,7 @@ import { analyzeEvent } from "./agent";
 import { createDemoEvent } from "./demo";
 import { addEvidence, decideDraft, getDisputeView, getDraft, passwordOk, redraft } from "./disputes";
 import { getAccessToken } from "./paypal";
+import { addPaymentEvidence, getPaymentView } from "./payments";
 
 export interface Env {
   DB: D1Database;
@@ -170,6 +171,17 @@ export default {
     if (req.method === "GET" && m) {
       const view = await getDisputeView(env, m[1]);
       return view ? json(view) : json({ error: "not_found" }, 404);
+    }
+    m = pathname.match(/^\/api\/payments\/([A-Za-z0-9-]+)$/);
+    if (req.method === "GET" && m) {
+      const view = await getPaymentView(env, m[1]);
+      return view ? json(view) : json({ error: "not_found" }, 404);
+    }
+    m = pathname.match(/^\/api\/payments\/([A-Za-z0-9-]+)\/evidence$/);
+    if (req.method === "POST" && m) {
+      const body = (await req.json().catch(() => ({}))) as Record<string, string>;
+      const r = await addPaymentEvidence(env, m[1], body);
+      return json(r.body, r.status);
     }
     m = pathname.match(/^\/api\/disputes\/([A-Za-z0-9-]+)\/(evidence|redraft)$/);
     if (req.method === "POST" && m) {

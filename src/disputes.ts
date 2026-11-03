@@ -282,10 +282,10 @@ async function submitToPayPal(env: Env, disputeId: string, payload: unknown): Pr
 
 // ---------- seller actions: add proof, ask for a new draft ----------
 
-const KINDS = new Set(["tracking", "receipt", "communication", "policy", "other"]);
+const KINDS = new Set(["tracking", "receipt", "photos", "communication", "policy", "other"]);
 
 type Who = { status: number; body: unknown } | { name: string };
-async function checkSeller(env: Env, body: Record<string, string>): Promise<Who> {
+export async function checkSeller(env: Env, body: Record<string, string>): Promise<Who> {
   if (!env.DEMO_PASSWORD) return { status: 503, body: { error: "Seller actions are not set up on this server." } };
   if (!(await passwordOk(env, body.password ?? ""))) return { status: 401, body: { error: "Wrong password." } };
   const name = (body.name ?? "").trim().slice(0, 80);
@@ -308,6 +308,15 @@ export async function addEvidence(env: Env, disputeId: string, body: Record<stri
   const txn = disputeTransactionIds(JSON.parse(ev.payload).resource ?? {})[0];
   if (!txn) return { status: 409, body: { error: "PayPal did not say which payment this dispute is about." } };
 
+  // Stored against this dispute's payment only, so it never leaks into another case.
+  return saveEvidence(env, who.name, txn, ev.is_demo, body, disputeId);
+}
+
+// Checks one proof item and stores it against a payment (transaction id). Used for disputes
+// and for payments before any dispute. auditKey is the dispute id, or "payment:<id>".
+export async function saveEvidence(
+  env: Env, name: string, txn: string, isDemo: number, body: Record<string, string>, auditKey: string
+): Promise<{ status: number; body: unknown }> {
   const kind = (body.kind ?? "").trim();
   const title = (body.title ?? "").trim();
   const details = (body.details ?? "").trim();
@@ -319,13 +328,12 @@ export async function addEvidence(env: Env, disputeId: string, body: Record<stri
   if (kind === "tracking" && !tracking) return { status: 400, body: { error: "Tracking proof needs a tracking number." } };
   if ((carrier?.length ?? 0) > 60 || (tracking?.length ?? 0) > 64) return { status: 400, body: { error: "Carrier or tracking number is too long." } };
 
-  // Stored against this dispute's payment only, so it never leaks into another case.
   const row = await env.DB.prepare(
     `INSERT INTO evidence (kind, title, body, carrier, tracking_number, transaction_id, is_demo)
      VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`
-  ).bind(kind, title, details, kind === "tracking" ? carrier : null, kind === "tracking" ? tracking : null, txn, ev.is_demo)
+  ).bind(kind, title, details, kind === "tracking" ? carrier : null, kind === "tracking" ? tracking : null, txn, isDemo)
     .first<{ id: number }>();
-  await audit(env, disputeId, null, "proof_added", who.name, { evidence_id: row?.id, kind, title });
+  await audit(env, auditKey, null, "proof_added", name, { evidence_id: row?.id, kind, title });
   return { status: 200, body: { saved: true, evidence_id: row?.id } };
 }
 

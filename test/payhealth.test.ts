@@ -4,6 +4,7 @@ import worker, { type Env } from "../src/index";
 import { draftDecision, keepKnownIds, takeCall } from "../src/agent";
 import { addEvidence, blockReason, buildEvidence, decideDraft, getDisputeView, redraft } from "../src/disputes";
 import { createDemoEvent } from "../src/demo";
+import { addPaymentEvidence, getPaymentView } from "../src/payments";
 
 const env = testEnv as unknown as Env;
 const PASS = "test-password";
@@ -340,5 +341,54 @@ describe("seller actions", () => {
     const r = await redraft(env, disputeId, { password: PASS, name: "Ada" });
     expect(r.status).toBe(502);
     expect(await auditActions(disputeId)).toEqual(["redraft_requested"]);
+  });
+});
+
+// ---------- proof ready before a dispute ----------
+describe("payment proof", () => {
+  async function addPayment(captureId: string) {
+    const payload = {
+      id: uid("WH-PAY"), event_type: "PAYMENT.CAPTURE.COMPLETED",
+      resource: { id: captureId, status: "COMPLETED", amount: { currency_code: "USD", value: "24.00" } },
+    };
+    await env.DB.prepare(
+      `INSERT INTO events (id, event_type, resource_type, resource_id, payload, verified, verify_status)
+       VALUES (?, ?, 'capture', ?, ?, 1, 'SUCCESS')`
+    ).bind(payload.id, payload.event_type, captureId, JSON.stringify(payload)).run();
+  }
+
+  it("shows a checklist and marks items saved", async () => {
+    const cap = uid("CAP");
+    await addPayment(cap);
+    const before = (await getPaymentView(env, cap))!;
+    expect(before.checklist.every((c) => !c.done)).toBe(true);
+    const r = await addPaymentEvidence(env, cap, {
+      password: PASS, name: "Ada", kind: "receipt", title: "Drop-off receipt", details: "Posted at the counter.",
+    });
+    expect(r.status).toBe(200);
+    const after = (await getPaymentView(env, cap))!;
+    expect(after.checklist.find((c) => c.kind === "receipt")!.done).toBe(true);
+    expect(after.audit.map((a) => a.action)).toEqual(["proof_added"]);
+  });
+
+  it("puts proof saved after the sale into the vault of a later dispute", async () => {
+    const cap = uid("CAP");
+    await addPayment(cap);
+    await addPaymentEvidence(env, cap, {
+      password: PASS, name: "Ada", kind: "tracking", title: "Courier record", details: "Delivered, signed.",
+      carrier: "UPS", tracking_number: "1Z999",
+    });
+    const d = uid("PP-R");
+    await addEvent({ disputeId: d, txn: cap });
+    const view = (await getDisputeView(env, d))!;
+    expect(view.vault.map((v) => v.tracking_number)).toEqual(["1Z999"]);
+    expect((await getPaymentView(env, cap))!.disputes).toEqual([d]);
+  });
+
+  it("refuses unknown payments and wrong passwords", async () => {
+    const cap = uid("CAP");
+    await addPayment(cap);
+    expect((await addPaymentEvidence(env, uid("NOPE"), { password: PASS, name: "A", kind: "other", title: "t", details: "d" })).status).toBe(404);
+    expect((await addPaymentEvidence(env, cap, { password: "wrong", name: "A", kind: "other", title: "t", details: "d" })).status).toBe(401);
   });
 });

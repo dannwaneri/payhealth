@@ -13,11 +13,18 @@ Built for the PayPal AI Hackathon. **Sandbox only. No real money moves.**
 2. Under **Add proof**, pick "Tracking or delivery record", fill in a title, details, carrier and tracking number, type any name and the password, and click **Save proof**.
 3. Click **Make a new draft with my saved proof**. The new draft cites only your proof, the evidence is rated Strong, and Approve unlocks.
 4. Click **Review and approve**, then **Approve (demo, nothing is sent)**. The audit trail shows who did what, when, and the exact payload.
-5. To see a real PayPal case, open [dispute PP-R-GDA-10196082](https://payhealth.fpl-test.workers.dev/dispute?id=PP-R-GDA-10196082). It shows signed PayPal events and two submissions that PayPal accepted (HTTP 200).
+5. To get proof ready before a dispute, open the [real sandbox payment 9W907734NT218004L](https://payhealth.fpl-test.workers.dev/payment?id=9W907734NT218004L). Its checklist shows which proof is saved for that sale and lets you add more.
+6. To see a real PayPal case, open [dispute PP-R-GDA-10196082](https://payhealth.fpl-test.workers.dev/dispute?id=PP-R-GDA-10196082). It shows signed PayPal events and two submissions that PayPal accepted (HTTP 200).
 
 Demo cases are made up and labeled "Demo case" everywhere. Each click creates its own order, so your test never affects another judge's.
 
 ## What it does
+
+**Before a dispute.** When a payment arrives, its page shows a proof checklist for that sale: tracking (with signature confirmation), postage receipt, photos of the item and packing, messages with the buyer, and shop terms. Proof saved here is stored against the payment. If a dispute opens later, the first draft already has it.
+
+This follows advice sellers give each other. In a public r/Watches thread on selling with PayPal Goods & Services ([link](https://www.reddit.com/r/Watches/comments/1xa1s5e/selling_on_reddit_is_paypal_buying_goods_risky/)), the top reply lists "item never arrived" claims among the most likely problems, and says many sellers skip documenting the sale and then have nothing to prove their case.
+
+**When a dispute opens:**
 
 1. PayPal sends a webhook to the Worker for each account event.
 2. The Worker asks PayPal to verify the signature, then stores the event in D1.
@@ -137,7 +144,7 @@ Open `https://<your-worker>.workers.dev/api/selfcheck`. All four values should b
 npm test
 ```
 
-32 tests run inside the Workers runtime with a local D1 database and the real migrations (via Cloudflare's Vitest integration). They need no PayPal or AI keys and make no network calls: PayPal is stubbed where a test needs it.
+35 tests run inside the Workers runtime with a local D1 database and the real migrations (via Cloudflare's Vitest integration). They need no PayPal or AI keys and make no network calls: PayPal is stubbed where a test needs it.
 
 They cover the rules the product depends on:
 
@@ -147,6 +154,7 @@ They cover the rules the product depends on:
 - Daily AI cap stops at the limit.
 - Submission: nothing is sent when PayPal is not asking for evidence (the draft stays waiting); when it is, the evidence goes out as the multipart `input` part with tracking from the vault, and unknown carriers are sent as `OTHER` with `carrier_name_other`.
 - Seller actions: proof validation, proof stays inside one case, each demo click gets its own order, redraft refused after the reply was sent.
+- Proof before a dispute: the payment checklist marks saved items, and proof saved on a payment is in the vault of a later dispute for that payment.
 
 We checked that the tests catch real mistakes by breaking three rules on purpose (the pending-draft check, the "Needs evidence" block, the carrier mapping). Five tests failed, and all passed again after the code was restored.
 
@@ -172,6 +180,8 @@ We checked that the tests catch real mistakes by breaking three rules on purpose
 | `GET /api/drafts/:id` | One draft with the evidence it uses. |
 | `POST /api/drafts/:id/approve` | Body: `name`, `password`, optional edited `notes`. |
 | `POST /api/drafts/:id/reject` | Body: `name`, `password`, optional `reason`. |
+| `GET /api/payments/:id` | One payment: proof checklist, saved proof, disputes for it, audit trail. |
+| `POST /api/payments/:id/evidence` | Same body as dispute evidence. Saves proof for this payment before any dispute. |
 | `POST /api/disputes/:id/evidence` | Body: `name`, `password`, `kind`, `title`, `details`, optional `carrier`, `tracking_number`. Saves proof for this dispute's payment. |
 | `POST /api/disputes/:id/redraft` | Body: `name`, `password`. Writes a new draft from the saved proof; the pending one is marked "Replaced". |
 | `POST /api/demo` | Load the demo case with proof. `?case=no-proof` loads the case with no proof saved. |

@@ -204,7 +204,10 @@ async function initFeed() {
       { headerName: "Source", field: "verified", width: 280, cellRenderer: (p) => sourceBadge(p.data), filter: false },
       {
         headerName: "Next step", field: "draft_status", width: 200,
-        valueGetter: (p) => (isDispute(p.data) ? DRAFT_STATUS[p.data.draft_status] || "No draft yet" : "Nothing to do"),
+        valueGetter: (p) =>
+          isDispute(p.data) ? DRAFT_STATUS[p.data.draft_status] || "No draft yet"
+          : p.data.event_type === "PAYMENT.CAPTURE.COMPLETED" ? "Save proof for this sale"
+          : "Nothing to do",
       },
     ],
     rowSelection: { mode: "singleRow", checkboxes: false, enableClickSelection: true },
@@ -212,6 +215,10 @@ async function initFeed() {
       const r = p.data;
       if (isDispute(r) && r.resource_id) {
         location.href = `/dispute?id=${encodeURIComponent(r.resource_id)}`;
+        return;
+      }
+      if (r.event_type.startsWith("PAYMENT.CAPTURE.") && r.resource_id) {
+        location.href = `/payment?id=${encodeURIComponent(r.resource_id)}`;
         return;
       }
       detail.replaceChildren(
@@ -300,6 +307,7 @@ async function initDispute() {
 const PROOF_KINDS = {
   tracking: "Tracking or delivery record",
   receipt: "Receipt or invoice",
+  photos: "Photos or video (describe them)",
   communication: "Message to or from the buyer",
   policy: "Shop policy",
   other: "Other proof",
@@ -518,6 +526,107 @@ async function initApprove() {
   );
 }
 
+// ---------- page: payment (get proof ready before any dispute) ----------
+async function initPayment() {
+  const root = $("#payment");
+  const id = params.get("id");
+  let v;
+  try {
+    v = await api(`/api/payments/${encodeURIComponent(id || "")}`);
+  } catch (err) {
+    return showError(root, err.status === 404 ? new Error("This payment was not found.") : err);
+  }
+  document.title = `Payment ${v.payment_id} · PayHealth`;
+  const ev = v.events[v.events.length - 1];
+  const doneCount = v.checklist.filter((c) => c.done).length;
+
+  const summary = el("div", { class: "card" },
+    el("div", { class: "row" }, sourceBadge(ev),
+      el("span", { class: `badge ${doneCount >= 3 ? "risk-low" : doneCount ? "risk-medium" : "risk-high"}`,
+        text: `Proof ready: ${doneCount} of ${v.checklist.length}` })),
+    el("h2", { style: "margin-top:12px", text: eventLabel(ev.event_type) }),
+    el("dl", { class: "facts" },
+      el("dt", { text: "Amount" }), el("dd", { text: money(v.amount) || "Not given" }),
+      el("dt", { text: "Transaction" }), el("dd", { text: v.payment_id }),
+      el("dt", { text: "Received" }), el("dd", { text: when(ev.received_at) })),
+    el("h3", { text: "What happened" }),
+    el("p", { text: ev.explanation || "Not explained yet." }),
+    el("h3", { text: "Why save proof now" }),
+    el("p", { text: "If the buyer later says the item did not arrive, PayPal asks you for proof by a deadline. Proof you save now is ready the moment a dispute opens, and PayHealth's first draft can use it." }));
+
+  const disputes = v.disputes.length
+    ? el("div", { class: "card" }, el("h2", { text: "Disputes for this payment" }),
+        el("ul", { class: "plain" }, ...v.disputes.map((d) =>
+          el("li", {}, el("a", { href: `/dispute?id=${encodeURIComponent(d)}`, text: d })))))
+    : null;
+
+  const checklist = el("div", { class: "card" },
+    el("h2", { text: "Proof checklist for this sale" }),
+    el("ul", { class: "plain" }, ...v.checklist.map((c) =>
+      el("li", {}, el("span", { class: `badge ${c.done ? "risk-low" : "tag"}`, text: c.done ? "Saved" : "Not yet" }), " ", c.label))),
+    v.vault.length ? el("h3", { text: "Saved proof" }) : null,
+    v.vault.length ? el("ul", { class: "plain" }, ...v.vault.map((e) =>
+      el("li", {}, el("strong", { text: e.title }), ` (${PROOF_KINDS[e.kind] || e.kind}): ${e.body}`))) : null);
+
+  // Add proof form (the server applies the same checks as on the dispute page).
+  const kind = el("select", { id: "p-kind" }, ...Object.entries(PROOF_KINDS).map(([k, label]) => el("option", { value: k, text: label })));
+  const firstMissing = v.checklist.find((c) => !c.done);
+  if (firstMissing) kind.value = firstMissing.kind;
+  const title = el("input", { type: "text", id: "p-title", maxlength: "120" });
+  const details = el("textarea", { id: "p-details", maxlength: "1000", placeholder: "What does this proof show? For photos, say what they show and where you keep them." });
+  details.style.minHeight = "120px";
+  const carrier = el("input", { type: "text", id: "p-carrier", maxlength: "60" });
+  const tracking = el("input", { type: "text", id: "p-tracking", maxlength: "64" });
+  const trackingFields = el("div", {},
+    el("label", { for: "p-carrier", text: "Carrier" }), carrier,
+    el("label", { for: "p-tracking", text: "Tracking number" }), tracking);
+  const syncKind = () => (trackingFields.hidden = kind.value !== "tracking");
+  kind.addEventListener("change", syncKind);
+  syncKind();
+  const name = el("input", { type: "text", id: "p-name", autocomplete: "name" });
+  try { name.value = sessionStorage.getItem("ph-name") || ""; } catch {}
+  name.addEventListener("input", () => { try { sessionStorage.setItem("ph-name", name.value); } catch {} });
+  const pass = el("input", { type: "password", id: "p-pass", autocomplete: "current-password" });
+  const msg = el("div", { "aria-live": "polite" });
+  const save = el("button", { type: "button", text: "Save proof" });
+  save.addEventListener("click", async () => {
+    save.disabled = true;
+    msg.replaceChildren(el("div", { class: "notice", text: "Saving..." }));
+    try {
+      await api(`/api/payments/${encodeURIComponent(v.payment_id)}/evidence`, {
+        method: "POST",
+        body: JSON.stringify({ kind: kind.value, title: title.value, details: details.value, carrier: carrier.value,
+          tracking_number: tracking.value, name: name.value, password: pass.value }),
+      });
+      try { sessionStorage.setItem("ph-msg", "Proof saved. If a dispute opens for this payment, the first draft will use it."); } catch {}
+      location.reload();
+    } catch (err) {
+      showError(msg, err);
+      save.disabled = false;
+    }
+  });
+  let flash = null;
+  try { flash = sessionStorage.getItem("ph-msg"); sessionStorage.removeItem("ph-msg"); } catch {}
+
+  const form = el("div", { class: "card" },
+    flash ? el("div", { class: "notice", text: flash }) : null,
+    el("h2", { text: "Add proof for this sale" }),
+    el("label", { for: "p-kind", text: "What kind of proof is it?" }), kind,
+    el("label", { for: "p-title", text: "Title" }), title,
+    el("label", { for: "p-details", text: "Details" }), details,
+    trackingFields,
+    el("p", { class: "muted small", text: "The AI may only use what you write here. Write facts you can show." }),
+    el("label", { for: "p-name", text: "Your name (for the audit trail)" }), name,
+    el("label", { for: "p-pass", text: "Approval password" }), pass,
+    el("div", { class: "actions" }, save),
+    msg);
+
+  const trail = el("div", { class: "card" }, el("h2", { text: "Audit trail" }),
+    v.audit.length ? el("ol", { class: "trail" }, ...v.audit.map(renderAudit)) : el("p", { class: "muted", text: "Nothing yet." }));
+
+  root.replaceChildren(summary, disputes || "", checklist, form, trail);
+}
+
 // ---------- start ----------
 const page = document.body.dataset.page;
-({ feed: initFeed, dispute: initDispute, approve: initApprove })[page]?.();
+({ feed: initFeed, dispute: initDispute, approve: initApprove, payment: initPayment })[page]?.();
