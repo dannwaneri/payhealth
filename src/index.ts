@@ -1,6 +1,6 @@
 import { analyzeEvent } from "./agent";
 import { createDemoEvent } from "./demo";
-import { decideDraft, getDisputeView, getDraft } from "./disputes";
+import { decideDraft, getDisputeView, getDraft, passwordOk } from "./disputes";
 import { getAccessToken } from "./paypal";
 
 export interface Env {
@@ -175,6 +175,12 @@ export default {
     if (req.method === "GET" && m) {
       const draft = await getDraft(env, Number(m[1]));
       return draft ? json(draft) : json({ error: "not_found" }, 404);
+    }
+    m = pathname.match(/^\/api\/events\/([A-Za-z0-9-]+)\/recheck$/);
+    if (req.method === "POST" && m) {
+      const body = (await req.json().catch(() => ({}))) as Record<string, string>;
+      if (!(await passwordOk(env, body.password ?? ""))) return json({ error: "Wrong password." }, 401);
+      return json(await analyzeEvent(env, m[1]));
     }
     m = pathname.match(/^\/api\/drafts\/(\d+)\/(approve|reject)$/);
     if (req.method === "POST" && m) {

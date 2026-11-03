@@ -150,8 +150,14 @@ export async function analyzeEvent(env: Env, eventId: string): Promise<AnalyzeRe
 
   const payload = JSON.parse(ev.payload);
   const resource = payload.resource ?? {};
-  const needsDraft = ev.event_type === "CUSTOMER.DISPUTE.CREATED";
   const disputeId: string | null = resource.dispute_id ?? null;
+  const isDispute = ev.event_type.startsWith("CUSTOMER.DISPUTE.");
+  // One draft per dispute: only the CREATED event drafts, and only if none exists yet
+  // (PayPal can deliver an event twice; a re-check must not add a second draft).
+  const hasDraft = disputeId
+    ? !!(await env.DB.prepare(`SELECT 1 FROM drafts WHERE dispute_id = ? LIMIT 1`).bind(disputeId).first())
+    : false;
+  const needsDraft = ev.event_type === "CUSTOMER.DISPUTE.CREATED" && !hasDraft;
 
   if (!env.ANTHROPIC_API_KEY) return record(env, ev.id, "no_api_key");
   if (!(await takeCall(env))) {
@@ -164,16 +170,18 @@ export async function analyzeEvent(env: Env, eventId: string): Promise<AnalyzeRe
     return { status: "cap_reached", saved_draft_id: savedId };
   }
 
-  const vault = needsDraft ? await loadVault(env, disputeTransactionIds(resource), ev.is_demo) : [];
+  // Every dispute event sees the vault, so its risk and next step match the draft.
+  const vault = isDispute ? await loadVault(env, disputeTransactionIds(resource), ev.is_demo) : [];
   const userMsg = [
     `Event type: ${ev.event_type}`,
     `PayPal summary: ${ev.summary ?? "(none)"}`,
     `Dispute draft needed: ${needsDraft ? "yes" : "no"}`,
+    ...(isDispute && hasDraft ? ["A reply draft already exists for this dispute. If the vault holds proof, the next step is to review and approve it."] : []),
     "",
     "<event_resource>",
     JSON.stringify(resource, null, 2),
     "</event_resource>",
-    ...(needsDraft
+    ...(isDispute
       ? ["", "<evidence_vault>", JSON.stringify(vault, null, 2), "</evidence_vault>"]
       : []),
   ].join("\n");

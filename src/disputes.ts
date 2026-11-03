@@ -145,7 +145,7 @@ export async function getDisputeView(env: Env, disputeId: string) {
 }
 
 // Constant-time password check: compare SHA-256 digests.
-async function passwordOk(env: Env, given: string): Promise<boolean> {
+export async function passwordOk(env: Env, given: string): Promise<boolean> {
   if (!env.DEMO_PASSWORD) return false;
   const enc = new TextEncoder();
   const [a, b] = await Promise.all([
