@@ -220,6 +220,16 @@ export async function decideDraft(
   }
 
   const result = await submitToPayPal(env, row.dispute_id, payload);
+
+  // PayPal is not asking for evidence yet: nothing was sent, so the draft goes back to pending.
+  if (!result.ok && result.step === "lookup") {
+    await env.DB.prepare(
+      `UPDATE drafts SET status = 'pending', decided_at = NULL, decided_by = NULL WHERE id = ?`
+    ).bind(draftId).run();
+    await audit(env, row.dispute_id, draftId, "not_sent_not_ready", "PayHealth", { paypal: result });
+    return { status: 200, body: { status: "not_ready", sent: false, result } };
+  }
+
   await env.DB.prepare(
     `UPDATE drafts SET status = ?, submitted_at = datetime('now'), submit_response = ? WHERE id = ?`
   ).bind(result.ok ? "submitted" : "failed", JSON.stringify(result), draftId).run();

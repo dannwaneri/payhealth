@@ -82,6 +82,7 @@ const AUDIT_ACTIONS = {
   sent: "Sent to PayPal",
   send_failed: "Sending to PayPal failed",
   not_sent_demo: "Not sent (demo case)",
+  not_sent_not_ready: "Not sent: PayPal is not asking for evidence yet",
 };
 
 // Risk score = the AI's estimate of the chance the seller loses money on this event (0-100).
@@ -361,6 +362,7 @@ async function initApprove() {
         r.status === "rejected" ? "Rejected. Nothing was sent." :
         r.status === "submitted" ? "Sent. PayPal accepted the evidence." :
         r.status === "failed" ? `Approved, but PayPal did not accept it. ${r.result?.message || ""}` :
+        r.status === "not_ready" ? `Nothing was sent. ${r.result?.message || ""} The draft is still waiting for you.` :
         r.why || "Approved.";
       result.replaceChildren(
         el("div", { class: `notice ${r.status === "failed" ? "bad" : ""}`, text: msg }),
