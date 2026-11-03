@@ -19,9 +19,14 @@
 
     <section class="card">
       <h2>Try it with a sample dispute</h2>
-      <p class="muted">This loads a made-up case: a buyer says a fabric order did not arrive. The AI reads it and drafts a reply from the seller's saved proof. Nothing is sent to PayPal.</p>
+      <p class="muted">Both cases are made up and labeled "Demo case". Nothing is sent to PayPal.</p>
+      <ul class="plain muted">
+        <li><strong>With proof:</strong> a buyer says a fabric order did not arrive. The seller saved tracking, a receipt and an email.</li>
+        <li><strong>No proof saved:</strong> a buyer says sandals did not arrive. The seller saved nothing, so the reply cannot be approved.</li>
+      </ul>
       <div class="actions">
-        <button id="demo">Load demo case</button>
+        <button id="demo" data-case="proof">Load demo case (with proof)</button>
+        <button id="demo-noproof" class="secondary" data-case="no-proof">Load demo case (no proof saved)</button>
       </div>
       <p id="demo-msg" class="muted small" aria-live="polite"></p>
     </section>

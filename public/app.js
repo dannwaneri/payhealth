@@ -135,20 +135,22 @@ function showError(where, err) {
 // ---------- page: event feed ----------
 async function initFeed() {
   const detail = $("#detail");
-  const demoBtn = $("#demo");
+  const demoBtns = [$("#demo"), $("#demo-noproof")];
   const demoMsg = $("#demo-msg");
 
-  demoBtn.addEventListener("click", async () => {
-    demoBtn.disabled = true;
-    demoMsg.textContent = "Working. The AI is reading the case. This takes about 10 seconds.";
-    try {
-      const r = await api("/api/demo", { method: "POST" });
-      location.href = `/dispute?id=${encodeURIComponent(r.dispute_id)}`;
-    } catch (err) {
-      demoMsg.textContent = `Could not load the demo case: ${err.message}`;
-      demoBtn.disabled = false;
-    }
-  });
+  for (const btn of demoBtns) {
+    btn.addEventListener("click", async () => {
+      demoBtns.forEach((b) => (b.disabled = true));
+      demoMsg.textContent = "Working. The AI is reading the case. This takes about 10 seconds.";
+      try {
+        const r = await api(`/api/demo?case=${btn.dataset.case}`, { method: "POST" });
+        location.href = `/dispute?id=${encodeURIComponent(r.dispute_id)}`;
+      } catch (err) {
+        demoMsg.textContent = `Could not load the demo case: ${err.message}`;
+        demoBtns.forEach((b) => (b.disabled = false));
+      }
+    });
+  }
 
   let rows;
   try {

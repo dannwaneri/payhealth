@@ -132,7 +132,7 @@ export async function getDisputeView(env: Env, disputeId: string) {
 
   return {
     dispute_id: disputeId,
-    is_demo: events.some((e) => e.is_demo === 1),
+    is_demo: events.some((e) => e.is_demo > 0),
     reason: latest.reason ?? null,
     status: latest.status ?? null,
     amount: latest.dispute_amount ?? null,

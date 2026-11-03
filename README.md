@@ -21,13 +21,13 @@ Built for the PayPal AI Hackathon. **Sandbox only. No real money moves.**
 
 Open the hosted URL listed in the submission. The approval password is in the submission's testing notes.
 
-1. On the home page, click **Load demo case**. Wait about 10 seconds.
+1. On the home page, click **Load demo case (with proof)**. Wait about 10 seconds.
    - This stores a made-up dispute (a fabric order that "did not arrive") and runs it through the same pipeline as a real webhook.
    - The demo case is labeled "Demo case (sample data)" on every screen.
 2. On the dispute page, read the explanation, the risk label and the drafted reply. Check the "Proof this reply uses" list against the reply text.
 3. Click **Review and approve**. Edit the reply if you want, type your name and the password, and click **Approve (demo, nothing is sent)**.
 4. Go back to the dispute. The audit trail shows your approval and the exact payload that would go to PayPal.
-5. To see a refused approval, open a dispute marked **Needs evidence**. The Approve button is disabled, and the server also refuses it.
+5. Go back to the home page and click **Load demo case (no proof saved)**. The seller saved nothing for this order, so the draft is marked **Needs evidence**, the evidence is rated Weak, and Approve is disabled. The server also refuses it.
 
 ### Send a test event from PayPal
 
@@ -44,6 +44,15 @@ Simulated disputes do not exist in PayPal, so they cannot receive evidence. To t
 3. Press Enter in the terminal. The script captures the payment and prints the transaction ID.
 4. Log in to the sandbox site as the same personal account, open the payment, and report a problem: "item not received".
 5. The dispute event arrives in PayHealth signed by PayPal ("Verified by PayPal").
+6. A new "not received" case starts at the inquiry stage, where PayPal may not accept evidence yet. If you approve then, PayHealth sends nothing and the audit trail shows PayPal's status. To move the case forward from the seller side, use the sandbox helper:
+
+   ```bash
+   node scripts/sandbox-dispute.mjs list
+   node scripts/sandbox-dispute.mjs escalate <dispute-id>
+   node scripts/sandbox-dispute.mjs seller-evidence <dispute-id>
+   ```
+
+   `seller-evidence` and `settle` use sandbox-only PayPal routes (`require-evidence`, `adjudicate`).
 
 ### Self-check
 

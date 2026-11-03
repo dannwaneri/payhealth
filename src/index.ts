@@ -152,8 +152,9 @@ async function selfCheck(req: Request, env: Env): Promise<Response> {
 }
 
 // Demo button: store a prepared dispute and run it through the same pipeline as a webhook.
-async function runDemo(env: Env): Promise<Response> {
-  const { eventId, disputeId } = await createDemoEvent(env);
+async function runDemo(req: Request, env: Env): Promise<Response> {
+  const kind = new URL(req.url).searchParams.get("case") === "no-proof" ? "no-proof" : "proof";
+  const { eventId, disputeId } = await createDemoEvent(env, kind);
   const result = await analyzeEvent(env, eventId);
   return json({ event_id: eventId, dispute_id: disputeId, ...result });
 }
@@ -162,7 +163,7 @@ export default {
   async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const { pathname } = new URL(req.url);
     if (req.method === "POST" && pathname === "/webhook") return handleWebhook(req, env, ctx);
-    if (req.method === "POST" && pathname === "/api/demo") return runDemo(env);
+    if (req.method === "POST" && pathname === "/api/demo") return runDemo(req, env);
     if (req.method === "GET" && pathname === "/api/drafts") return listDrafts(env);
     if (req.method === "GET" && pathname === "/api/selfcheck") return selfCheck(req, env);
     let m = pathname.match(/^\/api\/disputes\/([A-Za-z0-9-]+)$/);

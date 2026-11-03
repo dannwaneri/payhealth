@@ -42,7 +42,7 @@ const SYSTEM = `You help a small online seller understand PayPal webhook events.
 For each event:
 - category: pick the closest category.
 - what_happened: 1 or 2 short sentences in plain English for a non-technical seller. Facts only. No jargon.
-- next_step: 1 or 2 short sentences. The one thing the seller should do now. If there is a dispute draft, say to read and approve it.
+- next_step: 1 or 2 short sentences. The one thing the seller should do now. If there is a dispute draft and the vault holds proof, say to read and approve it. If the vault is empty, say to gather proof and add it first. Never tell the seller to approve a reply that has no proof.
 - risk_score: 0 to 100. The chance the seller loses money on this event. A completed payment is low. A denied or reversed payment is medium. For a dispute, start high, then lower it when the vault holds strong proof (for example tracking that shows delivery). With no proof it stays high.
 - risk_reason: one sentence.
 - Do not mention signatures, verification, demos or test data. The app shows those itself.
