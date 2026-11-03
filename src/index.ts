@@ -138,6 +138,29 @@ async function listDrafts(env: Env): Promise<Response> {
   return json(results);
 }
 
+// Self-check: are the PayPal credentials valid, and does PAYPAL_WEBHOOK_ID point at this Worker?
+// Returns booleans only, never ids or secrets.
+async function selfCheck(req: Request, env: Env): Promise<Response> {
+  const expected = new URL("/webhook", req.url).toString();
+  let token: string;
+  try {
+    token = await getAccessToken(env);
+  } catch {
+    return json({ paypal_credentials_ok: false, webhook_id_ok: false });
+  }
+  const res = await fetch(
+    `${env.PAYPAL_API_BASE}/v1/notifications/webhooks/${encodeURIComponent(env.PAYPAL_WEBHOOK_ID ?? "")}`,
+    { headers: { authorization: `Bearer ${token}` } }
+  );
+  const hook = res.ok ? ((await res.json()) as { url?: string }) : null;
+  return json({
+    paypal_credentials_ok: true,
+    webhook_id_found: res.ok,
+    webhook_url_matches: hook?.url === expected,
+    anthropic_key_set: !!env.ANTHROPIC_API_KEY,
+  });
+}
+
 // Demo button: store a prepared dispute and run it through the same pipeline as a webhook.
 async function runDemo(env: Env): Promise<Response> {
   const eventId = await createDemoEvent(env);
@@ -151,6 +174,7 @@ export default {
     if (req.method === "POST" && pathname === "/webhook") return handleWebhook(req, env, ctx);
     if (req.method === "POST" && pathname === "/api/demo") return runDemo(env);
     if (req.method === "GET" && pathname === "/api/drafts") return listDrafts(env);
+    if (req.method === "GET" && pathname === "/api/selfcheck") return selfCheck(req, env);
     if (req.method === "GET" && pathname === "/api/events") return listEvents(env);
     if (req.method === "GET" && pathname === "/health") return json({ ok: true });
     return json({ error: "not_found" }, 404);
