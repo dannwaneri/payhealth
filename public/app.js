@@ -330,8 +330,11 @@ function renderProof(v) {
   const name = el("input", { type: "text", id: "p-name", autocomplete: "name" });
   const pass = el("input", { type: "password", id: "p-pass", autocomplete: "current-password" });
   const msg = el("div", { "aria-live": "polite" });
-  const saveBtn = el("button", { type: "button", text: "Save proof" });
-  const redraftBtn = el("button", { type: "button", class: "secondary", text: "Make a new draft with my saved proof" });
+  const saveBtn = el("button", { type: "button", class: "secondary", text: "Save proof" });
+  const redraftBtn = el("button", { type: "button", text: "Make a new draft with my saved proof" });
+  // Keep the name across the reload after saving (never the password).
+  try { name.value = sessionStorage.getItem("ph-name") || ""; } catch {}
+  name.addEventListener("input", () => { try { sessionStorage.setItem("ph-name", name.value); } catch {} });
   if (!v.can_redraft) redraftBtn.disabled = true;
 
   const send = async (path, body, btn, busy) => {
@@ -369,22 +372,25 @@ function renderProof(v) {
   try { flash = sessionStorage.getItem("ph-msg"); sessionStorage.removeItem("ph-msg"); } catch {}
   if (flash) card.prepend(el("div", { class: "notice", text: flash }));
 
+  // Order: who you are, then the main action (new draft), then the optional "Add proof" form.
   card.append(
-    el("details", { open: !v.vault.length ? true : null },
+    el("label", { for: "p-name", text: "Your name (for the audit trail)" }), name,
+    el("label", { for: "p-pass", text: "Approval password" }), pass);
+  if (v.can_redraft && v.vault.length) {
+    card.append(el("div", { class: "actions" }, redraftBtn));
+  } else if (!v.can_redraft) {
+    card.append(el("p", { class: "muted small", text: "Your reply for this stage was already sent. PayHealth drafts again when PayPal asks for more." }));
+  }
+  card.append(
+    el("details", { open: !v.vault.length ? true : null, style: "margin-top:16px" },
       el("summary", { text: "Add proof" }),
       el("label", { for: "p-kind", text: "What kind of proof is it?" }), kind,
       el("label", { for: "p-title", text: "Title" }), title,
       el("label", { for: "p-details", text: "Details" }), details,
       trackingFields,
-      el("p", { class: "muted small", text: "The AI may only use what you write here. Write facts you can show." })));
-  card.append(
-    el("label", { for: "p-name", text: "Your name (for the audit trail)" }), name,
-    el("label", { for: "p-pass", text: "Approval password" }), pass,
-    el("div", { class: "actions" }, saveBtn, redraftBtn),
+      el("p", { class: "muted small", text: "The AI may only use what you write here. Write facts you can show." }),
+      el("div", { class: "actions" }, saveBtn)),
     msg);
-  if (!v.can_redraft) {
-    msg.before(el("p", { class: "muted small", text: "Your reply for this stage was already sent. PayHealth drafts again when PayPal asks for more." }));
-  }
   return card;
 }
 
