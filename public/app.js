@@ -84,11 +84,34 @@ const AUDIT_ACTIONS = {
   not_sent_demo: "Not sent (demo case)",
 };
 
+// Risk score = the AI's estimate of the chance the seller loses money on this event (0-100).
 function riskInfo(score) {
   if (score === null || score === undefined) return { label: "Not rated", cls: "risk-none" };
-  if (score >= 70) return { label: `High risk · ${score}`, cls: "risk-high" };
-  if (score >= 40) return { label: `Medium risk · ${score}`, cls: "risk-medium" };
-  return { label: `Low risk · ${score}`, cls: "risk-low" };
+  if (score >= 70) return { label: `High · ${score}`, cls: "risk-high" };
+  if (score >= 40) return { label: `Medium · ${score}`, cls: "risk-medium" };
+  return { label: `Low · ${score}`, cls: "risk-low" };
+}
+
+// Days until the reply-by date. Negative means past due.
+function daysLeft(due) {
+  if (!due) return null;
+  return Math.ceil((new Date(due).getTime() - Date.now()) / 864e5);
+}
+function urgencyBadge(due) {
+  const d = daysLeft(due);
+  if (d === null) return el("span", { class: "badge risk-none", text: "Urgency: check PayPal for the deadline" });
+  if (d <= 0) return el("span", { class: "badge risk-high", text: "Urgency: past the reply-by date" });
+  const text = `Urgency: ${d} day${d === 1 ? "" : "s"} left`;
+  return el("span", { class: `badge ${d < 3 ? "risk-medium" : "tag"}`, text });
+}
+const STRENGTH = {
+  strong: { label: "Evidence: Strong", cls: "risk-low" },
+  medium: { label: "Evidence: Medium", cls: "risk-medium" },
+  weak: { label: "Evidence: Weak", cls: "risk-high" },
+};
+function strengthBadge(level) {
+  const s = STRENGTH[level] || { label: "Evidence: Not rated", cls: "risk-none" };
+  return el("span", { class: `badge ${s.cls}`, text: s.label });
 }
 const riskBadge = (score) => {
   const r = riskInfo(score);
@@ -155,7 +178,8 @@ async function initFeed() {
       { headerName: "When", field: "received_at", valueFormatter: (p) => when(p.value), width: 190, sort: "desc" },
       { headerName: "What happened", field: "event_type", valueFormatter: (p) => eventLabel(p.value), flex: 1, minWidth: 200 },
       {
-        headerName: "Risk", field: "risk_score", width: 190,
+        headerName: "Chance of losing money", field: "risk_score", width: 230,
+        headerTooltip: "The AI's estimate, 0 to 100. Strong proof lowers it.",
         cellRenderer: (p) => riskBadge(p.value),
         filterValueGetter: (p) => riskInfo(p.data.risk_score).label.split(" ·")[0],
       },
@@ -176,7 +200,10 @@ async function initFeed() {
         el("div", { class: "card" },
           el("h2", { text: eventLabel(r.event_type) }),
           el("div", { class: "row" }, riskBadge(r.risk_score), sourceBadge(r)),
+          el("h3", { text: "What happened" }),
           el("p", { text: r.explanation || "Not explained yet." }),
+          r.next_step ? el("h3", { text: "What to do next" }) : null,
+          r.next_step ? el("p", { text: r.next_step }) : null,
           el("p", { class: "muted small", text: `${when(r.received_at)} · PayPal event ${r.id}` }))
       );
       detail.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -198,21 +225,31 @@ async function initDispute() {
   const ev = v.events[v.events.length - 1];
   const draft = v.drafts[0];
 
+  const left = daysLeft(v.respond_by);
+  const replyBy = v.respond_by
+    ? el("dd", {}, day(v.respond_by), " · ",
+        el("span", { class: left !== null && left < 3 ? "badge risk-medium" : "", text: left <= 0 ? "past due" : `${left} day${left === 1 ? "" : "s"} left` }))
+    : el("dd", { text: "Check the case in PayPal" });
+
   const summary = el("div", { class: "card" },
-    el("div", { class: "row" }, sourceBadge(ev), riskBadge(ev.risk_score)),
+    el("div", { class: "row" }, sourceBadge(ev), urgencyBadge(v.respond_by), strengthBadge(draft?.evidence_strength)),
     el("h2", { style: "margin-top:12px", text: REASONS[v.reason] || "Buyer opened a dispute" }),
     el("dl", { class: "facts" },
       el("dt", { text: "Amount" }), el("dd", { text: money(v.amount) || "Not given" }),
-      el("dt", { text: "Reply by" }), el("dd", { text: v.respond_by ? day(v.respond_by) : "Check the case in PayPal" }),
+      el("dt", { text: "Reply by" }), replyBy,
       el("dt", { text: "PayPal status" }), el("dd", { text: v.status || "Unknown" }),
       el("dt", { text: "Case number" }), el("dd", { text: v.dispute_id })),
-    el("h3", { text: "What this means" }),
+    el("h3", { text: "What happened" }),
     el("p", { text: ev.explanation || "Not explained yet." }),
+    ev.next_step ? el("h3", { text: "What to do next" }) : null,
+    ev.next_step ? el("p", { text: ev.next_step }) : null,
     v.buyer_messages.length ? el("h3", { text: "What the buyer wrote" }) : null,
     ...v.buyer_messages.map((m) => el("p", { class: "quote", text: m }))
   );
   if (v.is_demo) {
-    summary.prepend(el("div", { class: "notice", text: "This is the demo case. The seller, buyer and order are made up. Approving it does not send anything to PayPal." }));
+    summary.prepend(el("div", { class: "notice", text: "Demo case. Not from PayPal. The seller, buyer and order are made up, and approving sends nothing." }));
+  } else if (!ev.verified) {
+    summary.prepend(el("div", { class: "notice warn", text: "PayPal did not sign this message, so PayHealth cannot confirm it is real. Open the case in PayPal and check it before you act." }));
   }
 
   const draftCard = el("div", { class: "card" });
@@ -251,15 +288,17 @@ function renderDraft(d, withAction) {
     box.append(el("h3", { text: d.needs_evidence ? "Add this proof first" : "Proof that would make it stronger" }),
       el("ul", { class: "plain" }, ...d.missing.map((m) => el("li", { text: m }))));
   }
+  if (d.strength_reason) box.append(el("p", {}, strengthBadge(d.evidence_strength), " ", d.strength_reason));
   if (d.rationale) box.append(el("p", { class: "muted small", text: `Why this proof: ${d.rationale}` }));
 
   if (withAction && d.status === "pending") {
+    box.append(el("p", { class: "muted", text: "Nothing is sent until you approve." }));
     if (d.block_reason) {
       box.append(el("div", { class: `notice ${d.needs_evidence ? "warn" : ""}`, text: d.block_reason }),
         el("div", { class: "actions" }, el("button", { disabled: true, text: "Review and approve" })));
     } else {
       box.append(el("div", { class: "actions" },
-        el("a", { class: "button", href: `/approve?draft=${d.id}`, text: "Review and approve" })));
+        el("button", { type: "button", onclick: () => (location.href = `/approve?draft=${d.id}`), text: "Review and approve" })));
     }
   }
   return box;

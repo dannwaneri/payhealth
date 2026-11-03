@@ -8,7 +8,7 @@ Built for the PayPal AI Hackathon. **Sandbox only. No real money moves.**
 
 1. PayPal sends a webhook to the Worker for each account event.
 2. The Worker asks PayPal to verify the signature, then stores the event in D1.
-3. An AI (Claude Haiku 5.5) explains the event, rates the risk 0 to 100, and labels it low, medium or high.
+3. An AI (Claude Haiku 5.5) writes "What happened" and "What to do next", and estimates the chance of losing money (0 to 100). Strong proof lowers it.
 4. For a new dispute, the AI drafts a reply. It may use only items from the seller's evidence vault (tracking, receipts, emails, policies). Tracking numbers sent to PayPal come from the vault, not from AI text.
 5. A draft that points to no proof is marked **Needs evidence** and cannot be approved.
 6. The seller reads the draft, can edit it, and approves it with a name and password.
@@ -35,6 +35,16 @@ Open the hosted URL listed in the submission. The approval password is in the su
 2. Enter the Worker URL plus `/webhook`, pick **Customer dispute created**, and click **Send test**.
 3. Refresh the PayHealth home page. The event shows as "Simulated (not signed by PayPal)" with a risk label and a draft.
 
+### Make a real sandbox dispute
+
+Simulated disputes do not exist in PayPal, so they cannot receive evidence. To test the full path:
+
+1. Run `node scripts/sandbox-checkout.mjs` with `PP_ID` and `PP_SECRET` set to the sandbox app that owns the webhook.
+2. Open the link it prints and pay with a sandbox **personal** account. PayPal returns you to a page that says "Payment approved".
+3. Press Enter in the terminal. The script captures the payment and prints the transaction ID.
+4. Log in to the sandbox site as the same personal account, open the payment, and report a problem: "item not received".
+5. The dispute event arrives in PayHealth signed by PayPal ("Verified by PayPal").
+
 ### Self-check
 
 `GET /api/selfcheck` returns true/false for: PayPal credentials work, the webhook ID exists in PayPal, the webhook URL points at this Worker, and the AI key is set. It never returns IDs or keys.
@@ -47,7 +57,9 @@ Open the hosted URL listed in the submission. The approval password is in the su
 | Simulated (not signed by PayPal) | The event failed signature verification. In the sandbox this is the Webhooks Simulator, which PayPal says cannot be verified. |
 | Demo case (sample data) | Made-up data from the Load demo case button. Never sent to PayPal. |
 | AI draft / Saved draft | A saved draft appears when the daily AI limit is reached. It is shown for reference and cannot be approved. |
-| Low / Medium / High risk | Score below 40 / 40 to 69 / 70 and above. Always shown as text, not only color. |
+| Chance of losing money: Low / Medium / High | The AI's estimate: below 40 / 40 to 69 / 70 and above. Strong proof lowers it. Always shown as text, not only color. |
+| Urgency: N days left | Days until PayPal's reply-by date. Amber under 3 days, red when past due. |
+| Evidence: Strong / Medium / Weak | How well the saved proof answers the buyer's claim. A draft with no proof is always Weak and cannot be approved. |
 
 ## Run it yourself
 

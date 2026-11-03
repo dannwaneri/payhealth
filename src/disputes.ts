@@ -16,6 +16,8 @@ type Draft = {
   tracking_number: string | null;
   notes: string;
   missing: string[];
+  evidence_strength?: "strong" | "medium" | "weak";
+  strength_reason?: string;
 };
 
 type DraftRow = {
@@ -88,6 +90,8 @@ function draftView(row: DraftRow, items: EvidenceRow[]) {
     evidence_type: draft.evidence_type,
     notes: draft.notes,
     missing: draft.missing,
+    evidence_strength: draft.evidence_ids.length ? draft.evidence_strength ?? null : "weak",
+    strength_reason: draft.evidence_ids.length ? draft.strength_reason ?? null : "No proof is attached yet.",
     evidence: items,
     needs_evidence: draft.evidence_ids.length === 0,
     block_reason: blockReason(row, draft),
@@ -104,7 +108,7 @@ export async function getDraft(env: Env, draftId: number) {
 export async function getDisputeView(env: Env, disputeId: string) {
   const { results: events } = await env.DB.prepare(
     `SELECT id, event_type, summary, payload, verified, verify_status, received_at, risk_score, risk_reason,
-            explanation, is_demo
+            explanation, next_step, is_demo
        FROM events WHERE resource_id = ? ORDER BY received_at`
   )
     .bind(disputeId)

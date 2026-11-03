@@ -113,7 +113,7 @@ async function handleWebhook(req: Request, env: Env, ctx: ExecutionContext): Pro
 async function listEvents(env: Env): Promise<Response> {
   const { results } = await env.DB.prepare(
     `SELECT id, event_type, resource_id, summary, verified, verify_status, received_at,
-            risk_score, risk_reason, explanation, is_demo,
+            risk_score, risk_reason, explanation, next_step, is_demo,
             (SELECT status FROM drafts d WHERE d.event_id = events.id ORDER BY d.id DESC LIMIT 1) AS draft_status
        FROM events ORDER BY received_at DESC LIMIT 200`
   ).all();
