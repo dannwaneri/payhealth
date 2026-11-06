@@ -158,7 +158,7 @@ To try the AI without your own Anthropic key, use the hosted demo. `npm test` ne
 npm test
 ```
 
-42 tests run inside the Workers runtime with a local D1 database and the real migrations (via Cloudflare's Vitest integration). They need no PayPal or AI keys and make no network calls: PayPal is stubbed where a test needs it.
+46 tests run inside the Workers runtime with a local D1 database and the real migrations (via Cloudflare's Vitest integration). They need no PayPal or AI keys and make no network calls: PayPal is stubbed where a test needs it.
 
 They cover the rules the product depends on:
 
@@ -168,6 +168,7 @@ They cover the rules the product depends on:
 - Daily AI cap stops at the limit.
 - Submission: nothing is sent when PayPal is not asking for evidence (the draft stays waiting); when it is, the evidence goes out as the multipart `input` part with tracking from the vault, and unknown carriers are sent as `OTHER` with `carrier_name_other`.
 - Seller actions: proof validation, proof stays inside one case, each demo click gets its own order, redraft refused after the reply was sent.
+- Reply-by date: a move is reported when an inquiry becomes a claim, with no false alarms for unchanged dates, small differences, or events with no date.
 - Proof before a dispute: the payment checklist marks saved items, and proof saved on a payment is in the vault of a later dispute for that payment.
 - Tracking to PayPal: the Orders v2 request goes to the payment's order with the right carrier fields and a request id per proof item; a refusal is recorded without losing the proof; nothing is sent when the box is unticked or for a demo sale.
 

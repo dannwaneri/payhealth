@@ -303,6 +303,9 @@ async function initDispute() {
     v.buyer_messages.length ? el("h3", { text: "What the buyer wrote" }) : null,
     ...v.buyer_messages.map((m) => el("p", { class: "quote", text: m }))
   );
+  if (v.deadline_change && !sent) {
+    summary.prepend(el("div", { class: "notice warn", text: `PayPal changed your reply-by date from ${day(v.deadline_change.from)} to ${day(v.deadline_change.to)}.` }));
+  }
   if (v.is_demo) {
     summary.prepend(el("div", { class: "notice", text: "Demo case. Not from PayPal. The seller, buyer and order are made up, and approving sends nothing." }));
   } else if (!ev.verified) {
@@ -612,6 +615,7 @@ async function initPayment() {
 
   const checklist = el("div", { class: "card" },
     el("h2", { text: "Proof checklist for this sale" }),
+    el("div", { class: "notice", text: "Before you ship: send the item only to the address shown on the PayPal transaction." }),
     el("ul", { class: "plain" }, ...v.checklist.map((c) =>
       el("li", {}, el("span", { class: `badge ${c.done ? "risk-low" : "tag"}`, text: c.done ? "Saved" : "Not yet" }), " ", c.label))),
     v.vault.length ? el("h3", { text: "Saved proof" }) : null,

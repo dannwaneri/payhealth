@@ -108,11 +108,23 @@ export async function getDraft(env: Env, draftId: number) {
   return draftView(row, await vaultItems(env, draft.evidence_ids));
 }
 
+// Did PayPal move the reply-by date? Takes each event's date, oldest first. Reports the last move,
+// but only while the newest event still carries that date (PayPal drops it during review).
+export function deadlineChange(dates: (string | null | undefined)[]): { from: string; to: string } | null {
+  if (!dates.length || !dates[dates.length - 1]) return null;
+  const known = dates.filter((d): d is string => !!d);
+  const to = known[known.length - 1];
+  for (let i = known.length - 2; i >= 0; i--) {
+    if (Math.abs(Date.parse(known[i]) - Date.parse(to)) > 60_000) return { from: known[i], to };
+  }
+  return null;
+}
+
 export async function getDisputeView(env: Env, disputeId: string) {
   const { results: events } = await env.DB.prepare(
     `SELECT id, event_type, summary, payload, verified, verify_status, received_at, risk_score, risk_reason,
             explanation, next_step, is_demo
-       FROM events WHERE resource_id = ? ORDER BY received_at`
+       FROM events WHERE resource_id = ? ORDER BY received_at, rowid`
   )
     .bind(disputeId)
     .all<Record<string, any>>();
@@ -147,6 +159,7 @@ export async function getDisputeView(env: Env, disputeId: string) {
     status: latest.status ?? null,
     amount: latest.dispute_amount ?? null,
     respond_by: latest.seller_response_due_date ?? null,
+    deadline_change: deadlineChange(events.map((e) => JSON.parse(e.payload).resource?.seller_response_due_date)),
     buyer_messages: (latest.messages ?? []).filter((m: any) => m.posted_by === "BUYER").map((m: any) => m.content),
     events: events.map(({ payload, ...e }) => e),
     drafts,

@@ -2,7 +2,7 @@ import { createExecutionContext, env as testEnv, SELF, waitOnExecutionContext } 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker, { type Env } from "../src/index";
 import { draftDecision, keepKnownIds, takeCall } from "../src/agent";
-import { addEvidence, blockReason, buildEvidence, decideDraft, getDisputeView, redraft } from "../src/disputes";
+import { addEvidence, blockReason, buildEvidence, deadlineChange, decideDraft, getDisputeView, redraft } from "../src/disputes";
 import { createDemoDisputeForSale, createDemoEvent, createDemoSale } from "../src/demo";
 import { trackerBody } from "../src/tracking";
 import { addPaymentEvidence, getPaymentView } from "../src/payments";
@@ -497,5 +497,36 @@ describe("demo sale", () => {
       `INSERT INTO events (id, event_type, resource_type, resource_id, payload, verified, verify_status) VALUES (?, 'PAYMENT.CAPTURE.COMPLETED', 'capture', ?, '{}', 1, 'SUCCESS')`
     ).bind(uid("WH"), cap).run();
     expect(await createDemoDisputeForSale(env, cap)).toBeNull();
+  });
+});
+
+// ---------- PayPal moves the reply-by date ----------
+describe("deadline change", () => {
+  const nov23 = "2026-11-23T04:22:09.695Z";
+  const nov13 = "2026-11-13T04:00:00.000Z";
+
+  it("reports the move when an inquiry becomes a claim", () => {
+    expect(deadlineChange([nov23, nov23, nov13])).toEqual({ from: nov23, to: nov13 });
+  });
+  it("stays quiet when the date never moved or only differs by seconds", () => {
+    expect(deadlineChange([nov23, nov23])).toBeNull();
+    expect(deadlineChange([nov23, "2026-11-23T04:22:30.000Z"])).toBeNull();
+    expect(deadlineChange([nov23])).toBeNull();
+  });
+  it("ignores events with no date, but stays quiet while the newest event has none", () => {
+    expect(deadlineChange([nov23, null, nov13])).toEqual({ from: nov23, to: nov13 });
+    expect(deadlineChange([nov23, nov13, undefined])).toBeNull();
+    expect(deadlineChange([])).toBeNull();
+  });
+  it("shows the move on the dispute view", async () => {
+    const d = uid("PP-R");
+    for (const due of [nov23, nov13]) {
+      const id = uid("WH");
+      const payload = { id, event_type: "CUSTOMER.DISPUTE.UPDATED", resource: { dispute_id: d, seller_response_due_date: due } };
+      await env.DB.prepare(
+        `INSERT INTO events (id, event_type, resource_type, resource_id, payload, verified, verify_status) VALUES (?, ?, 'dispute', ?, ?, 1, 'SUCCESS')`
+      ).bind(id, payload.event_type, d, JSON.stringify(payload)).run();
+    }
+    expect((await getDisputeView(env, d))!.deadline_change).toEqual({ from: nov23, to: nov13 });
   });
 });
