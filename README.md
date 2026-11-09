@@ -39,19 +39,24 @@ This follows advice sellers give each other. In a public r/Watches thread on sel
 7. The Worker checks the dispute with the PayPal Disputes API and submits the evidence.
 8. Every step is written to an audit trail: who approved, when, and exactly what was sent.
 
-## Tested end to end (our own sandbox run, 3 Nov 2026)
+## Proof: every claim, how it was shown, where to check it
 
-| Step | Result |
-|---|---|
-| Buyer pays a sandbox order | Capture `9W907734NT218004L`, USD 24.00, COMPLETED |
-| PayPal webhooks for the payment | `CHECKOUT.ORDER.APPROVED`, `PAYMENT.CAPTURE.COMPLETED`: signature check SUCCESS |
-| Buyer opens an "item not received" case | Dispute `PP-R-GDA-10196082` |
-| PayPal webhooks for the dispute | `CUSTOMER.DISPUTE.CREATED`, `CUSTOMER.DISPUTE.UPDATED`: signature check SUCCESS |
-| AI draft | Evidence: Strong. Cites only the three vault items (marked "sandbox test"). |
-| Human approval | Name and time recorded in the audit trail |
-| Submit to PayPal | `POST /v1/customer/disputes/{id}/provide-evidence` returned HTTP 200 |
+Real runs are on the PayPal **sandbox** (3 Nov 2026). "Test" means the automated tests in [`test/payhealth.test.ts`](test/payhealth.test.ts) (`npm test`, no keys, no network). "Demo" means made-up data, labeled on every screen.
 
-The vault items for this test are sample data we created for the sandbox. They are labeled "(sandbox test)" in the app.
+| Claim | How it was shown | Check it |
+|---|---|---|
+| A buyer paid a real sandbox order | Real sandbox: capture `9W907734NT218004L`, USD 24.00, COMPLETED | [Payment page](https://payhealth.fpl-test.workers.dev/payment?id=9W907734NT218004L) |
+| PayPal's messages are signature-checked | Real sandbox: `CHECKOUT.ORDER.APPROVED`, `PAYMENT.CAPTURE.COMPLETED`, `CUSTOMER.DISPUTE.CREATED` and `UPDATED` all returned SUCCESS from PayPal's verify call | [Event list](https://payhealth.fpl-test.workers.dev/), "Verified by PayPal" label |
+| Tracking saved at the sale reaches PayPal | Real sandbox: `POST /v2/checkout/orders/{id}/track` returned **HTTP 201** | [Payment page](https://payhealth.fpl-test.workers.dev/payment?id=9W907734NT218004L), "Sent to PayPal" on the UPS item |
+| PayPal accepted PayHealth's evidence (first complaint) | Real sandbox: `provide-evidence` returned **HTTP 200** after approval by a named person | [Dispute PP-R-GDA-10196082](https://payhealth.fpl-test.workers.dev/dispute?id=PP-R-GDA-10196082), audit trail |
+| PayPal asked again when the case became a claim, and accepted again | Real sandbox: we escalated the case with the Disputes API `escalate` call to test the claim stage; PayHealth wrote a new draft for that stage; `provide-evidence` returned **HTTP 200** | Same dispute, second "Sent to PayPal" entry |
+| The draft cites only the seller's proof | Real sandbox draft cites the three vault items (sample proof labeled "sandbox test"); test: unknown evidence ids are dropped | Dispute page, "Proof this reply uses" |
+| No proof, no reply | Test (server refuses approval) + demo | Home → **Load demo case (no proof saved)** |
+| Proof saved at the sale is used when a dispute opens later | Test + demo | Home → **Load a demo sale**, save proof, **Buyer opens a dispute (demo)** |
+| Nothing is sent twice, and nothing is sent when PayPal is not asking | Tests (PayPal stubbed) | `npm test` |
+| A move of the reply-by date is shown | Test; our real case moved from 23 Nov to 13 Nov when it became a claim | `npm test` (the real case is now under review, so PayPal no longer shows a date) |
+
+The proof items in the real dispute are sample data we created for the sandbox test, labeled "(sandbox test)" in the app. No real money moved.
 
 ## How to test
 
@@ -214,7 +219,7 @@ We checked that the tests catch real mistakes by breaking three rules on purpose
 ## Known limits
 
 - **Simulator events cannot be verified.** PayPal's Webhooks Simulator page says simulator events cannot be verified. PayHealth stores them with `verified = 0` and labels them "simulated".
-- **Simulated disputes do not exist in PayPal.** They cannot receive evidence. The full path (see "Tested end to end") needs a real sandbox dispute on a completed payment.
+- **Simulated disputes do not exist in PayPal.** They cannot receive evidence. The full path (see "Proof: every claim") needs a real sandbox dispute on a completed payment.
 - **PayPal accepts evidence only at some stages.** The Worker submits only when PayPal's dispute details include a `provide_evidence` link. Otherwise it sends nothing, keeps the draft waiting, and writes PayPal's status to the audit trail. In our test the link was present as soon as the buyer opened the case.
 - **One draft per dispute stage.** When an inquiry becomes a claim and PayPal asks for evidence again, PayHealth writes a new draft for the claim. Other dispute events update the explanation and risk only. The seller can also ask for a new draft after adding proof, until the reply for that stage is approved.
 - **Proof is text.** The seller describes each item (title, details, carrier and tracking number). Files such as photos or PDFs are not uploaded or sent to PayPal.
