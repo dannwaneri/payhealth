@@ -115,7 +115,12 @@ async function listEvents(env: Env): Promise<Response> {
   const { results } = await env.DB.prepare(
     `SELECT id, event_type, resource_id, summary, verified, verify_status, received_at,
             risk_score, risk_reason, explanation, next_step, is_demo,
-            (SELECT status FROM drafts d WHERE d.event_id = events.id ORDER BY d.id DESC LIMIT 1) AS draft_status
+            (SELECT status FROM drafts d WHERE d.event_id = events.id ORDER BY d.id DESC LIMIT 1) AS draft_status,
+            CASE WHEN event_type LIKE 'PAYMENT.CAPTURE.%' THEN
+              (SELECT COUNT(DISTINCT kind) FROM evidence v
+                WHERE v.transaction_id = events.resource_id AND v.is_demo = events.is_demo
+                  AND v.kind IN ('tracking', 'receipt', 'photos', 'communication', 'policy'))
+            END AS proof_count
        FROM events ORDER BY received_at DESC LIMIT 200`
   ).all();
   return json(results);

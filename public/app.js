@@ -205,25 +205,47 @@ async function initFeed() {
     rowVerticalPaddingScale: 1.4,
   });
 
-  agGrid.createGrid($("#grid"), {
+  // "Sales that need proof": payment rows with fewer than 3 of the 5 checklist items saved.
+  let onlyNeedProof = false;
+  const needsProof = (r) => r.event_type === "PAYMENT.CAPTURE.COMPLETED" && (r.proof_count ?? 0) < 3;
+
+  const gridApi = agGrid.createGrid($("#grid"), {
     theme,
     rowData: rows,
+    isExternalFilterPresent: () => onlyNeedProof,
+    doesExternalFilterPass: (node) => needsProof(node.data),
     defaultColDef: { sortable: true, resizable: true, filter: true },
     columnDefs: [
-      { headerName: "When", field: "received_at", valueFormatter: (p) => when(p.value), width: 190, sort: "desc" },
-      { headerName: "What happened", field: "event_type", valueFormatter: (p) => eventLabel(p.value), flex: 1, minWidth: 200 },
+      { headerName: "When", field: "received_at", valueFormatter: (p) => when(p.value), getQuickFilterText: (p) => when(p.value), width: 190, sort: "desc" },
+      {
+        headerName: "What happened", field: "event_type", valueFormatter: (p) => eventLabel(p.value), flex: 1, minWidth: 200,
+        // Search what the seller sees, plus the case or transaction number.
+        getQuickFilterText: (p) => `${eventLabel(p.value)} ${p.data.resource_id || ""} ${p.data.summary || ""}`,
+      },
       {
         headerName: "Chance of losing money", field: "risk_score", width: 230,
         headerTooltip: "The AI's estimate, 0 to 100. Strong proof lowers it.",
         cellRenderer: (p) => riskBadge(p.value),
+        getQuickFilterText: (p) => riskInfo(p.value).label,
         filterValueGetter: (p) => riskInfo(p.data.risk_score).label.split(" ·")[0],
       },
-      { headerName: "Source", field: "verified", width: 280, cellRenderer: (p) => sourceBadge(p.data), filter: false },
+      {
+        headerName: "Proof ready", field: "proof_count", width: 150,
+        headerTooltip: "For each sale: how many of the 5 checklist items are saved.",
+        cellRenderer: (p) => {
+          if (p.value === null || p.value === undefined) return "";
+          const n = p.value;
+          return el("span", { class: `badge ${n >= 3 ? "risk-low" : n ? "risk-medium" : "risk-high"}`, text: `${n} of 5` });
+        },
+        filter: "agNumberColumnFilter",
+      },
+      { headerName: "Source", field: "verified", width: 280, cellRenderer: (p) => sourceBadge(p.data), getQuickFilterText: (p) => sourceBadge(p.data).textContent, filter: false },
       {
         headerName: "Next step", field: "draft_status", width: 200,
         valueGetter: (p) =>
           isDispute(p.data) ? DRAFT_STATUS[p.data.draft_status] || "No draft yet"
-          : p.data.event_type === "PAYMENT.CAPTURE.COMPLETED" ? "Save proof for this sale"
+          : p.data.event_type === "PAYMENT.CAPTURE.COMPLETED"
+            ? ((p.data.proof_count ?? 0) >= 5 ? "Proof complete" : "Save proof for this sale")
           : "Nothing to do",
       },
     ],
@@ -250,6 +272,18 @@ async function initFeed() {
       );
       detail.scrollIntoView({ behavior: "smooth", block: "nearest" });
     },
+  });
+
+  // Search box (AG Grid quick filter) and the "Sales that need proof" toggle.
+  $("#grid-search").addEventListener("input", (e) => gridApi.setGridOption("quickFilterText", e.target.value));
+  const needBtn = $("#need-proof");
+  const needCount = rows.filter(needsProof).length;
+  needBtn.textContent = `Sales that need proof (${needCount})`;
+  needBtn.addEventListener("click", () => {
+    onlyNeedProof = !onlyNeedProof;
+    needBtn.setAttribute("aria-pressed", String(onlyNeedProof));
+    needBtn.textContent = onlyNeedProof ? "Show all events" : `Sales that need proof (${needCount})`;
+    gridApi.onFilterChanged();
   });
 }
 

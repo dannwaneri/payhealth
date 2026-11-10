@@ -163,7 +163,7 @@ To try the AI without your own Anthropic key, use the hosted demo. `npm test` ne
 npm test
 ```
 
-46 tests run inside the Workers runtime with a local D1 database and the real migrations (via Cloudflare's Vitest integration). They need no PayPal or AI keys and make no network calls: PayPal is stubbed where a test needs it.
+47 tests run inside the Workers runtime with a local D1 database and the real migrations (via Cloudflare's Vitest integration). They need no PayPal or AI keys and make no network calls: PayPal is stubbed where a test needs it.
 
 They cover the rules the product depends on:
 

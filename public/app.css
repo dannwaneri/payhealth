@@ -81,5 +81,9 @@ details summary { cursor: pointer; color: var(--accent); }
 pre { white-space: pre-wrap; word-break: break-word; font-size: 0.8rem; background: var(--bg); padding: 10px; border-radius: 6px; }
 
 #grid { height: 560px; width: 100%; }
+.grid-tools { display: flex; flex-wrap: wrap; gap: 12px; margin: 12px 0; }
+.grid-tools input { flex: 1 1 260px; width: auto; }
+.grid-tools button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 #detail { margin-top: 16px; }
 .empty { padding: 32px; text-align: center; color: var(--muted); }

@@ -530,3 +530,25 @@ describe("deadline change", () => {
     expect((await getDisputeView(env, d))!.deadline_change).toEqual({ from: nov23, to: nov13 });
   });
 });
+
+// ---------- event feed: proof count per sale ----------
+describe("event feed proof count", () => {
+  it("counts the checklist kinds saved for each sale, and leaves other events empty", async () => {
+    const cap = uid("CAP");
+    const payId = uid("WH-PAY");
+    await env.DB.prepare(
+      `INSERT INTO events (id, event_type, resource_type, resource_id, payload, verified, verify_status, received_at)
+       VALUES (?, 'PAYMENT.CAPTURE.COMPLETED', 'capture', ?, '{}', 1, 'SUCCESS', '2999-01-01 00:00:00')`
+    ).bind(payId, cap).run();
+    for (const kind of ["tracking", "tracking", "receipt"]) {
+      await env.DB.prepare(
+        `INSERT INTO evidence (kind, title, body, transaction_id, is_demo) VALUES (?, 't', 'b', ?, 0)`
+      ).bind(kind, cap).run();
+    }
+    const rows = await (await SELF.fetch("https://x/api/events")).json<any[]>();
+    const pay = rows.find((r) => r.id === payId);
+    expect(pay.proof_count).toBe(2);
+    const other = rows.find((r) => !r.event_type.startsWith("PAYMENT.CAPTURE."));
+    if (other) expect(other.proof_count).toBeNull();
+  });
+});

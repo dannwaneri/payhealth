@@ -43,7 +43,12 @@
 
     <section class="card">
       <h2>Recent events</h2>
-      <p class="muted small">Click a dispute to see the drafted reply. Click any other event to read what it means.</p>
+      <p class="muted small">Click a sale to save its proof. Click a dispute to see the drafted reply. Click any other event to read what it means.</p>
+      <div class="grid-tools">
+        <label for="grid-search" class="visually-hidden">Search events</label>
+        <input type="search" id="grid-search" placeholder="Search events, amounts, case numbers">
+        <button type="button" id="need-proof" class="secondary" aria-pressed="false">Sales that need proof</button>
+      </div>
       <div id="grid"></div>
       <div id="detail"></div>
     </section>
