@@ -17,6 +17,15 @@
       <a href="/about" class="small">How this works</a>
     </header>
 
+    <section class="card real" aria-labelledby="real-h">
+      <h2 id="real-h">Real PayPal sandbox records</h2>
+      <p class="muted small">These two records came from PayPal's sandbox, not from a demo button. PayPal signed every message about them.</p>
+      <ul class="plain">
+        <li><a href="/payment?id=9W907734NT218004L">Real sale 9W907734NT218004L</a>: proof saved, tracking number sent to PayPal (PayPal answered HTTP 201).</li>
+        <li><a href="/dispute?id=PP-R-GDA-10196082">Real dispute PP-R-GDA-10196082</a>: reply approved by a person and accepted by PayPal twice (HTTP 200), once as an inquiry and once as a claim.</li>
+      </ul>
+    </section>
+
     <section class="card">
       <h2>Start here: a sale comes in</h2>
       <p>PayHealth starts at the sale, not when a dispute arrives. It tells you which proof to keep while you still have it, and can send your tracking number to PayPal.</p>

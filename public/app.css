@@ -35,6 +35,10 @@ h3 { font-size: 1.05rem; margin: 20px 0 8px; }
 .back { display: inline-block; margin-bottom: 12px; }
 
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
+.card.real { border-left: 4px solid var(--accent); padding: 14px 20px; }
+.card.real h2 { font-size: 1.05rem; margin-bottom: 4px; }
+.card.real ul { margin: 8px 0 0; }
+.card.real li + li { margin-top: 4px; }
 .muted { color: var(--muted); }
 .small { font-size: 0.85rem; }
 .row { display: flex; flex-wrap: wrap; gap: 8px 24px; }
