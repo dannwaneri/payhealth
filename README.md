@@ -20,6 +20,18 @@ Built for the PayPal AI Hackathon. **Sandbox only. No real money moves.**
 
 Demo sales and demo cases are made up and labeled everywhere. Each click creates its own order, so your test never affects another judge's.
 
+**At the sale:** each payment shows how much proof is saved, and why to save it now.
+
+![A demo sale with "Proof ready: 2 of 5"](docs/images/1-sale-proof.png)
+
+**On the real sandbox sale:** the UPS tracking number went to PayPal, and PayPal saved it.
+
+![Proof list on the real sandbox payment, with "Sent to PayPal" on the courier record](docs/images/2-real-tracking-sent.png)
+
+**No proof, no reply:** a draft that points to no proof is marked "Needs evidence", and Approve is blocked by code.
+
+![A dispute draft marked "Needs evidence" with the approve button disabled](docs/images/3-no-proof-no-reply.png)
+
 ## How this meets the judging criteria
 
 | Criterion | Open this | What it shows | In the code |
