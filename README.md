@@ -11,12 +11,22 @@ Built for the PayPal AI Hackathon. **Sandbox only. No real money moves.**
 **Live demo:** https://payhealth.fpl-test.workers.dev
 **Approval password:** in the submission's testing notes on Devpost. No PayPal or AI account is needed.
 
+**If you have 30 seconds:** open the [real dispute PP-R-GDA-10196082](https://payhealth.fpl-test.workers.dev/dispute?id=PP-R-GDA-10196082) and scroll to the audit trail.
+*Look for:* "PayPal accepted the evidence" twice, and a person's name on each approval.
+
+**If you have 2 minutes:**
+
 1. Click **Load a demo sale**. A made-up paid order opens with an empty proof checklist.
-2. Save one or two items, for example a tracking number (any carrier and number) and a postage receipt. Type any name and the password. The checklist count goes up.
-3. Click **Buyer opens a dispute (demo)**. Wait about 10 seconds. The dispute page opens, and the reply is already drafted from the proof you saved, so you can approve it straight away.
-4. Click **Review and approve**, then **Approve (demo, nothing is sent)**. The audit trail shows who did what, when, and the exact payload.
-5. To see the safety rule, go back home and click **Load demo case (no proof saved)**. The draft is marked **Needs evidence** and Approve is blocked. Add proof on that page and click **Make a new draft** to unlock it.
-6. Real PayPal sandbox records: the [payment 9W907734NT218004L](https://payhealth.fpl-test.workers.dev/payment?id=9W907734NT218004L) (signed by PayPal) and its [dispute PP-R-GDA-10196082](https://payhealth.fpl-test.workers.dev/dispute?id=PP-R-GDA-10196082), where PayPal accepted the evidence twice (HTTP 200).
+2. Save one or two items, for example a tracking number (any carrier and number) and a postage receipt. Type any name and the password.
+   *Look for:* the "Proof ready" count goes up with each item.
+3. Click **Buyer opens a dispute (demo)**. Wait about 10 seconds.
+   *Look for:* the drafted reply already uses the proof you saved in step 2.
+4. Click **Review and approve**, then **Approve (demo, nothing is sent)**.
+   *Look for:* the audit trail shows who approved, when, and the exact payload.
+5. Go back home and click **Load demo case (no proof saved)**.
+   *Look for:* the draft is marked **Needs evidence**, and Approve is blocked. Add proof on that page and click **Make a new draft** to unlock it.
+6. Open the [real payment 9W907734NT218004L](https://payhealth.fpl-test.workers.dev/payment?id=9W907734NT218004L).
+   *Look for:* "Sent to PayPal" on the UPS courier record: PayPal saved the tracking number (HTTP 201).
 
 Demo sales and demo cases are made up and labeled everywhere. Each click creates its own order, so your test never affects another judge's.
 
