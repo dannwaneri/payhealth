@@ -20,6 +20,16 @@ Built for the PayPal AI Hackathon. **Sandbox only. No real money moves.**
 
 Demo sales and demo cases are made up and labeled everywhere. Each click creates its own order, so your test never affects another judge's.
 
+## How this meets the judging criteria
+
+| Criterion | Open this | What it shows | In the code |
+|---|---|---|---|
+| Technological Implementation | [Real dispute PP-R-GDA-10196082](https://payhealth.fpl-test.workers.dev/dispute?id=PP-R-GDA-10196082), its audit trail | Signed PayPal webhooks, evidence accepted by the Disputes API twice (HTTP 200), one draft per dispute stage. Rules in code: no proof, no approval; the AI can cite only saved proof; nothing is sent twice. 47 tests. | `src/disputes.ts`, `src/agent.ts`, `test/payhealth.test.ts` |
+| Design | [Home page](https://payhealth.fpl-test.workers.dev), then **Load a demo sale** | A proof checklist in plain words, risk labels with text (not only color), and an approve page that works on a phone. | `public/index.html`, `public/payment.html`, `public/approve.html` |
+| Potential Impact | [Real sale 9W907734NT218004L](https://payhealth.fpl-test.workers.dev/payment?id=9W907734NT218004L) | The seller saves proof while it still exists, and the tracking number goes to PayPal (HTTP 201). PayPal's docs link tracking to seller protection and faster access to funds (source in [What it does](#what-it-does)). | `src/payments.ts`, `src/tracking.ts` |
+| Innovation | Load a demo sale, save proof, then **Buyer opens a dispute (demo)** | The proof saved at the sale is already in the first dispute draft, so the seller does not search for it later. | `src/payments.ts`, `src/agent.ts` (test: "puts proof saved after the sale into the vault of a later dispute") |
+| Presentation | The demo video (linked on Devpost) and the [proof table](#proof-every-claim-how-it-was-shown-where-to-check-it) below | Each claim, how it was shown, and where to check it yourself. | `README.md` |
+
 ## What it does
 
 **Before a dispute.** When a payment arrives, its page shows a proof checklist for that sale: tracking (with signature confirmation), postage receipt, photos of the item and packing, messages with the buyer, and shop terms. Proof saved here is stored against the payment. If a dispute opens later, the first draft already has it.
